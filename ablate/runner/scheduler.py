@@ -61,6 +61,8 @@ async def run_one(plan: Plan, cfg: dict, scenario: dict, arm: str, trial: int, a
             if attempt == max_retries or not getattr(e, "retryable", True):
                 break
             delay = random.uniform(0, base_delay * (2 ** attempt))  # full jitter
+            if getattr(e, "retry_after", None):  # server's hint (free-tier 429s say "retry in 45s")
+                delay = max(delay, e.retry_after + random.uniform(0, base_delay))
             await sleep(delay)
             continue
         final = world.snapshot()

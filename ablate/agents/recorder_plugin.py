@@ -53,13 +53,14 @@ def have_credentials() -> bool:
 
 
 class RecorderPlugin(BasePlugin):
-    def __init__(self, *, world, cache, trial_key: str, limiter, toolset: set[str]) -> None:
+    def __init__(self, *, world, cache, trial_key: str, limiter, toolset: set[str], needs_key: bool = True) -> None:
         super().__init__(name="ablate_recorder")
         self.world = world
         self.cache = cache
         self.trial_key = trial_key
         self.limiter = limiter
         self.toolset = set(toolset)
+        self.needs_key = needs_key
         self.turn = 0
         self.call_index = 0
         self.api_calls = 0
@@ -81,7 +82,7 @@ class RecorderPlugin(BasePlugin):
             self._pending = None
             self._log(resp, cached=True)
             return resp
-        if not have_credentials():
+        if self.needs_key and not have_credentials():
             raise MissingCredentials("no GOOGLE_API_KEY / GEMINI_API_KEY set and this model call is not cached")
         await self.limiter.acquire()
         self.api_calls += 1

@@ -2,7 +2,7 @@
 # Units the differ sees: model, gen.<key>, block.<id>, tool.<name>.
 # Blocks are split from ablate/world/retail/policy.md (tau2-bench, MIT).
 name: retail-support
-model: gemini-2.5-flash-lite
+model: gemini-3.5-flash-lite
 generation_config:
   temperature: 0.0
 blocks:

@@ -55,6 +55,9 @@ class Plan:
     cost_per_trial_usd: float = 0.0
     release_status: str = "OK"  # OK | INCOMPATIBLE (base/cand rejected at preflight)
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # SHA-256 of the scenario definitions (turn texts, expectations), so an
+    # edited scenario can never reuse trials cached under the old wording.
+    scenarios_hash: str = ""
 
     # -- derived ----------------------------------------------------------
     @property
@@ -86,6 +89,8 @@ class Plan:
         d["units"] = [asdict(u) for u in self.units]
         d["arms"] = [asdict(a) for a in self.arms]
         d["notes"] = list(self.notes)
+        if not self.scenarios_hash:
+            d.pop("scenarios_hash")  # plans frozen before this field keep their hash
         return d
 
     def canonical_json(self) -> str:

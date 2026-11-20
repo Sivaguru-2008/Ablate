@@ -18,9 +18,15 @@ class AgentInfraError(RuntimeError):
     """Infrastructure failure: the trial is INVALID. Retryable ones (429, 5xx,
     timeouts) are retried with backoff first; others are INVALID at once."""
 
-    def __init__(self, message: str, *, retryable: bool = True) -> None:
+    def __init__(self, message: str, *, retryable: bool = True, retry_after: float | None = None) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.retry_after = retry_after
+
+
+class QuotaExhausted(RuntimeError):
+    """A daily (not per-minute) quota is used up. The run stops; finished
+    trials and model calls stay cached, so rerunning later resumes."""
 
 
 class MissingCredentials(RuntimeError):

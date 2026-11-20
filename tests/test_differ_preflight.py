@@ -11,6 +11,13 @@ def cfgs(root):
     return differ.load_config(root / "configs" / "base.yaml"), differ.load_config(root / "configs" / "cand.yaml")
 
 
+def gemini25(cfg):
+    """Lint tests pin a Gemini 2.5 model: thinking_level is a Gemini 3 setting."""
+    cfg = copy.deepcopy(cfg)
+    cfg["model"] = "gemini-2.5-flash-lite"
+    return cfg
+
+
 def scen(root):
     return load_scenarios(root / "scenarios" / "retail.yaml")
 
@@ -32,7 +39,8 @@ def test_units_and_demo_arms(root):
 
 
 def test_thinking_level_rule_fires_incompatible(root):
-    base, cand = cfgs(root)
+    base, _ = cfgs(root)
+    base = gemini25(base)
     cand = copy.deepcopy(base)
     cand["generation_config"]["thinking_level"] = "low"  # Gemini 2.5 model
     issues = preflight.lint(cand)
@@ -44,7 +52,7 @@ def test_thinking_level_rule_fires_incompatible(root):
 
 
 def test_unit_whose_arm_is_rejected_is_incompatible(root):
-    base, _ = cfgs(root)
+    base = gemini25(cfgs(root)[0])
     cand = copy.deepcopy(base)
     cand["model"] = "gemini-3-pro-preview"
     cand["generation_config"]["thinking_level"] = "low"
@@ -113,7 +121,7 @@ def test_cli_preflight_prints_incompatible_without_banned_words(root, tmp_path, 
 
     from ablate import wording
     from ablate.cli import main
-    cand = differ.load_config(root / "configs" / "base.yaml")
+    cand = gemini25(differ.load_config(root / "configs" / "base.yaml"))
     cand["generation_config"]["thinking_level"] = "low"
     p = tmp_path / "cand.yaml"
     p.write_text(yaml.safe_dump(cand), encoding="utf-8")

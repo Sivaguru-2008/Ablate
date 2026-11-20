@@ -60,7 +60,7 @@ DECOYS = {
     "gen.temperature": lambda c: c["generation_config"].update(temperature=0.2),
     "tool.get_order_details": lambda c: c["tools"]["get_order_details"].update(description=(
         "Look up an order by its id and return its status, items, fulfilment and payment history.")),
-    "model": lambda c: c.update(model="gemini-2.5-flash"),
+    "model": lambda c: c.update(model="gemini-3.5-flash"),
 }
 CULPRITS = ("block.confirm", "block.auth")
 KINDS = ("culprit", "null", "multiple", "interaction")

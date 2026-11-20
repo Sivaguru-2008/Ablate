@@ -84,16 +84,27 @@ def request_draft(tool: str, examples: list[dict], model: str) -> str:
     from google import genai
     from google.genai import types
 
-    resp = genai.Client().models.generate_content(
-        model=model, contents=build_prompt(tool, examples),
-        config=types.GenerateContentConfig(
-            temperature=0.0, response_mime_type="application/json",
-            response_schema={"type": "OBJECT", "properties": {"code": {"type": "STRING"}}, "required": ["code"]}),
-    )
-    return json.loads(resp.text)["code"]
+    import random
+    import time
+
+    from google.genai import errors
+
+    client = genai.Client()  # keep a reference: an unreferenced client closes before the request
+    config = types.GenerateContentConfig(
+        temperature=0.0, response_mime_type="application/json",
+        response_schema={"type": "OBJECT", "properties": {"code": {"type": "STRING"}}, "required": ["code"]})
+    for attempt in range(6):
+        try:
+            resp = client.models.generate_content(model=model, contents=build_prompt(tool, examples), config=config)
+            return json.loads(resp.text)["code"]
+        except errors.APIError as e:
+            if e.code not in (429, 500, 503) or attempt == 5:
+                raise
+            time.sleep(min(60.0, 2.0 * 2 ** attempt) + random.uniform(0, 1))  # busy model: back off and retry
+    raise RuntimeError("unreachable")
 
 
-def draft_and_gate(results, *, tool: str = "get_order_details", model: str = "gemini-2.5-flash",
+def draft_and_gate(results, *, tool: str = "get_order_details", model: str = "gemini-3.8-flash",
                    out_dir: Path | None = None, code: str | None = None) -> dict:
     if tool not in TOOL_SPECS:
         raise ValueError(f"unknown tool {tool}")

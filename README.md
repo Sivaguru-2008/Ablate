@@ -24,12 +24,27 @@ uv run ablate check --out runs/demo         # scripted agent: no API key needed
 uv run pytest                               # full suite (~3 min)
 ```
 
-Live run on Gemini via ADK (needs `GOOGLE_API_KEY`):
+Live run on Gemini via ADK (needs `GOOGLE_API_KEY`; configs use `gemini-3.5-flash-lite`):
 
 ```bash
-uv run ablate preflight --agent adk --budget 5 --probe
-uv run ablate check --agent adk --budget 5 --rpm 60 --out runs/live
+uv run ablate preflight --agent adk --probe
+uv run ablate check --agent adk --rpm 14 --out runs/live     # free tier: 15 req/min, 500 req/day
 ```
+
+Free tier: about 5,900 requests are needed for 1,080 trials, so a free key finishes in about 12
+days. When the daily cap hits, the run stops cleanly (exit 7) and the same command resumes later.
+`preflight.py` has no list price for `gemini-3.5-flash-lite`, so it prices it at the most
+expensive known tier (≈ $42 estimate); add the real price to `PRICES_PER_M` before using `--budget`.
+
+Local model through Ollama (free, no quota; `uv sync --extra local`):
+
+```bash
+uv run ablate check --agent adk --model ollama_chat/qwen2.5:7b --concurrency 6 --out runs/local
+```
+
+Run Ollama with `OLLAMA_NUM_PARALLEL=4 OLLAMA_CONTEXT_LENGTH=8192` at least: the prompt is about
+2,000 tokens, and Ollama's default 4K context silently truncates longer conversations. A
+`#nothink` suffix (e.g. `ollama_chat/qwen3:8b#nothink`) switches a model's thinking mode off.
 
 Every model call goes through `.ablate_cache/`; kill a run at any point and rerun the same
 command to resume with zero repeated API calls.
@@ -97,11 +112,11 @@ Ablate abstains in those cases; it does not guess.
 | 1 stats + simulate | `ablate simulate` prints type I error, power, MDE, NI power, floor | passes |
 | 2 verdict + scripted agent + seal | culprit CONFIRMED, decoys not named, nulls abstain, no API key; hashes.json written | passes |
 | 3 differ + preflight lint | thinking-level rule → INCOMPATIBLE; non-closed arms → NOT_REVERTIBLE | passes |
-| 4 world + oracle + ADK agent + recorder | 20 live trials on Flash-Lite, state-hashed | **offline only**: real ADK runner + plugin verified against a fake `BaseLlm`; the live test (`tests/test_adk_runner.py::test_live_flash_lite_20_trials`) is skipped without `GOOGLE_API_KEY` |
+| 4 world + oracle + ADK agent + recorder | 20 live trials on Flash-Lite, state-hashed | passes live on `gemini-3.5-flash-lite` (`gemini-2.5-flash-lite` is retired for new keys); offline it runs against a fake `BaseLlm` |
 | 5 runner, cache, rate limit | kill mid-run, rerun, zero repeated API calls | passes (fake LLM, real ADK stack) |
 | 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
 | 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
-| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | gate verified offline with supplied drafts; the Gemini call is untested without a key |
+| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | passes live: `gemini-3.5-flash` drafted it and the gate accepted it (1,064/1,064 recorded trials replay exactly); wrong and unsafe drafts are rejected in tests. The gate can only check behaviour the recordings contain (no recorded trial looked up a missing order) |
 | Stretch: Cloud Run Job | | not built |
 
 ## Layout
@@ -138,6 +153,30 @@ action.yml (GitHub Action stub)  THIRD_PARTY.md  tests/
 - Prices in `preflight.py` are list-price estimates for the budget cap; unknown models are priced
   at the most expensive known tier. Edit `PRICES_PER_M` if prices change.
 - The default model is `gemini-2.5-flash-lite`; change `model:` in the configs if that id is retired.
+
+## Live findings so far
+
+- **Gemini (`gemini-3.5-flash-lite`), 12-trial pilot:** with the weakened confirm block the
+  candidate cancelled or returned before the user's "yes" in 4 of 4 cancel/return scenarios;
+  base waited for confirmation in 2 of 3. Both fell for the prompt-injection scenario. The full
+  check is 50 of 1,080 trials in, paused by the free tier's 500-requests/day cap.
+- **Local `qwen2.5:7b`, full 1,080 trials (2-turn scenarios):** NEEDS MORE EVIDENCE. Base broke a
+  contract in 72.5% of trials, cand in 42.5%. Base mostly cancelled without the required status
+  check, and in 5 scenarios it re-confirmed after the user's "yes", which the 2-turn scripted users
+  could not answer. That second case was a scenario defect: cancel/return scenarios now have a
+  third "go ahead" turn, and scenario text is part of the plan hash.
+- **Local `qwen2.5:7b`, reduced run (k = 2, 432 trials, 3-turn scenarios):** NEEDS MORE
+  EVIDENCE, no regression: cand 52.1% vs base 54.2% (one-sided p = 0.63). The third turn removed
+  most unfinished tasks, but base still skips the required status check, so it fails half its
+  scenarios and the gate flags that. On this model the weakened confirm block makes no measurable
+  difference. k = 2 departs from the design constants; the report says so.
+- **Local `qwen2.5-coder-tools:7b` (pilot):** ignored the confirm rule in base too, so unusable.
+- **Preflight `--probe`, live:** clean on `gemini-3.5-flash`; on the retired `gemini-2.5-flash-lite` the API rejected every arm and preflight marked the release INCOMPATIBLE before any trial ran.
+- **Gemma 4 31B on the free API:** tool calling works and the limit is 30 requests/minute, but
+  the endpoint returned 503 "high demand" for most calls when tried.
+
+The report warns when base itself fails most scenarios, and notes when the A/A control is
+vacuous because decoding is deterministic.
 
 ## Limits
 

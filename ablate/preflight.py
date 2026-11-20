@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from . import differ
 from .plan import ALPHA, BOOTSTRAP_B, DELTA, FLIPS, K_TRIALS, N_SCENARIOS, SEED, ArmSpec, Plan, UnitSpec, arm_name
 from .stats import tests as st
+from .world.base import sha256_json
 from .world.retail.tools import TOOL_SPECS
 
 GEN_KEYS = {"temperature", "top_p", "top_k", "max_output_tokens", "thinking_budget", "thinking_level",
@@ -88,7 +89,7 @@ def lint(cfg: dict, arm: str = "") -> list[Issue]:
 
     if not model:
         bad("model-missing", "no model id")
-    elif fam == "unknown":
+    elif fam == "unknown" and not model.startswith(("ollama/", "ollama_chat/")):
         warn("model-unknown", f"unrecognised model id {model!r}; lint coverage is partial")
     for k in gen:
         if k not in GEN_KEYS:
@@ -143,6 +144,8 @@ def lint(cfg: dict, arm: str = "") -> list[Issue]:
 def price(model: str, price_in: float | None = None, price_out: float | None = None) -> tuple[float, float]:
     if price_in is not None and price_out is not None:
         return price_in, price_out
+    if str(model).startswith(("ollama/", "ollama_chat/")):
+        return 0.0, 0.0  # local model: no per-token cost
     if model in PRICES_PER_M:
         return PRICES_PER_M[model]
     return max(PRICES_PER_M.values())
@@ -211,9 +214,12 @@ def build(base: dict, cand: dict, scenarios: list[dict], *, agent: str = "script
     notes = []
     if len(scenarios) != N_SCENARIOS:
         notes.append(f"n = {len(scenarios)} differs from the design constant {N_SCENARIOS}; simulated error rates do not apply")
+    if k != K_TRIALS:
+        notes.append(f"k = {k} differs from the design constant {K_TRIALS}; simulated error rates do not apply")
     plan = Plan(scenarios=tuple(s["id"] for s in scenarios), units=tuple(units), arms=tuple(arms), k=k,
                 delta=delta, alpha=alpha, bootstrap_B=B, flips=flips, seed=seed, agent=agent, model=model,
-                cost_per_trial_usd=round(cpt, 6), release_status=release_status, notes=tuple(notes))
+                cost_per_trial_usd=round(cpt, 6), release_status=release_status, notes=tuple(notes),
+                scenarios_hash=sha256_json(scenarios))
     pf = Preflight(plan=plan, configs=configs, issues=issues)
     n_rev = max(1, len(plan.revertible))
     pf.floor = st.affected_scenario_floor(plan.n, n_rev, alpha, flips)

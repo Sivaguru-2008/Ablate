@@ -103,7 +103,12 @@ def _print_preflight(pf, show_mde: bool) -> None:
 
 
 def _load_pair(a):
-    return differ.load_config(a.base), differ.load_config(a.cand)
+    base, cand = differ.load_config(a.base), differ.load_config(a.cand)
+    if getattr(a, "model", None):
+        if base.get("model") != cand.get("model"):
+            say("[yellow]warning[/yellow] --model replaces a model change between base and cand; that unit disappears")
+        base["model"] = cand["model"] = a.model
+    return base, cand
 
 
 def _probe(a):
@@ -146,7 +151,7 @@ def _progress_factory(total_label: str):
 
 
 def cmd_check(a) -> int:
-    from .agents.base import MissingCredentials
+    from .agents.base import MissingCredentials, QuotaExhausted
     from .pipeline import BudgetExceeded, run_check
     from .scenarios import load_scenarios
 
@@ -167,6 +172,10 @@ def cmd_check(a) -> int:
     except BudgetExceeded as e:
         say(f"[red]{e}[/red]")
         return 4
+    except QuotaExhausted as e:
+        say(f"[yellow]Stopped: {e}[/yellow]")
+        say("Finished trials and model calls are cached. Rerun the same command after the quota resets to resume.")
+        return 7
     except MissingCredentials as e:
         say(f"[red]{e}[/red]. Set GOOGLE_API_KEY (or use --agent scripted). Finished trials stay cached; rerun to resume.")
         return 2
@@ -302,6 +311,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--k", type=int, default=None, help="trials per scenario per arm (default 5; changes the plan)")
         sp.add_argument("--probe", action="store_true", help="send one live probe request per distinct model config")
         sp.add_argument("--cache-dir", default=None)
+        sp.add_argument("--model", default=None,
+                        help="use this model in both configs, e.g. ollama_chat/qwen2.5:7b (local, no quota)")
 
     s = sub.add_parser("preflight", help="lint, arms, cost, budget and floor warnings")
     common(s)
@@ -333,7 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("draft", help="(Should tier) Gemini drafts a tool's world function from traces; fidelity gate decides")
     s.add_argument("--run", required=True)
     s.add_argument("--tool", default="get_order_details")
-    s.add_argument("--model", default="gemini-2.5-flash")
+    s.add_argument("--model", default="gemini-3.8-flash")
     s.set_defaults(fn=cmd_draft)
 
     s = sub.add_parser("envelopes", help="sealed-envelope benchmark: seal | run | reveal")

@@ -62,6 +62,12 @@ def render(plan: Plan, v: Verdict, results=None) -> str:
         inside = -plan.delta < lo and hi < plan.delta
         lines.append(f"- Equivalence interval for cand − base: [{_pp(lo)}, {_pp(hi)}] "
                      f"({'inside' if inside else 'not inside'} ±{plan.delta * 100:.0f} pp).")
+    if v.base_rate is not None and v.base_rate > 0.5:
+        lines.append(f"- ⚠ Base itself violates a contract in {v.base_rate:.0%} of trials: the base agent fails most "
+                     "scenarios, so this gate says little about the release. Check the model and scenarios before relying on it.")
+    if v.aa_identical and v.status != "DRIFT":
+        lines.append("- Note: the A/A replicate matched base exactly (deterministic decoding), so the A/A control "
+                     "carries no information about run-to-run drift here.")
     lines.append("")
     if v.named:
         names = ", ".join(f"`{u}`" for u in v.named)

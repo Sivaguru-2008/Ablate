@@ -82,6 +82,7 @@ class Verdict:
     status: str
     decision: str
     aa_p: float | None = None
+    aa_identical: bool = False  # A/A counts equal base counts in every scenario
     model_versions: dict = field(default_factory=dict)
     infra_p: dict = field(default_factory=dict)
     repro_p: float | None = None
@@ -190,6 +191,8 @@ def verdict_from_counts(plan: Plan, counts: dict[str, ArmCounts], versions: dict
     # 1. A/A + model version --------------------------------------------------
     _, aa_diffs = _paired(counts, aa, base)
     v.aa_p = st.sign_flip_p(aa_diffs, alternative="two-sided", flips=plan.flips, seed=plan.seed)
+    v.aa_identical = bool(np.array_equal(counts[aa].viol, counts[base].viol)
+                          and np.array_equal(counts[aa].valid, counts[base].valid))
     drift = []
     if v.aa_p < a:
         drift.append(f"A/A replicate differs from base (two-sided p = {v.aa_p:.4f} < {a})")
@@ -237,8 +240,13 @@ def verdict_from_counts(plan: Plan, counts: dict[str, ArmCounts], versions: dict
             n_req = st.more_scenarios_needed(rd, effect=gap, alpha=a, k=plan.k) if gap > 0 else None
             n_more = None if n_req is None else max(0, n_req - plan.n)
             head = f"Equivalence interval [{lo:+.3f}, {hi:+.3f}] is not inside ±{plan.delta:.2f}"
-            v.next_step = (f"{head}: ~{n_more} more paired scenarios ≈ ${_usd(plan, n_more):,.2f}"
-                           if n_more is not None else f"{head}; the observed gap is at the margin.")
+            if hi < 0:
+                v.next_step = (f"{head}: the candidate violates contracts less than base. "
+                               "Review the behaviour change before shipping; the gate does not approve large shifts in either direction.")
+            elif n_more is not None:
+                v.next_step = f"{head}: ~{n_more} more paired scenarios ≈ ${_usd(plan, n_more):,.2f}"
+            else:
+                v.next_step = f"{head}; the observed difference is at or beyond the margin."
         for uid in plan.revertible:
             v.units.append(UnitVerdict(unit=uid, status=NOT_TESTED, note="regression not reproduced"))
         return v

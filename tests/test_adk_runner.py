@@ -165,3 +165,50 @@ def test_missing_key_stops_instead_of_retrying(root, tmp_path, monkeypatch):
     cache = DiskCache(tmp_path)
     with pytest.raises(MissingCredentials):
         asyncio.run(run_one(plan, configs["base"], scen["s01_cancel_email"], "base", 0, agent(cache), cache))
+
+
+def test_daily_quota_stops_and_retry_hint_is_used(root, tmp_path):
+    from google.genai import errors as genai_errors
+
+    from ablate.agents.adk_agent import classify_error
+    from ablate.agents.base import QuotaExhausted
+
+    def err(msg):
+        return genai_errors.ClientError(429, {"error": {"code": 429, "message": msg, "status": "RESOURCE_EXHAUSTED"}})
+
+    class Boom:
+        name = "boom"
+
+        def __init__(self, msg):
+            self.msg = msg
+
+        async def run_trial(self, *a, **k):
+            try:
+                raise RuntimeError("Error in plugin") from err(self.msg)  # ADK-style wrapping
+            except Exception as e:
+                raise classify_error(e) from None
+
+    plan, configs, scen = setup(root)
+    cache = DiskCache(tmp_path)
+    with pytest.raises(QuotaExhausted):
+        asyncio.run(run_one(plan, configs["base"], scen["s01_cancel_email"], "base", 0,
+                            Boom("Quota exceeded for metric: GenerateRequestsPerDayPerProjectPerModel"), cache))
+    slept = []
+
+    async def rec(d):
+        slept.append(d)
+
+    r = asyncio.run(run_one(plan, configs["base"], scen["s01_cancel_email"], "base", 0,
+                            Boom("per-minute limit. Please retry in 45.4s."), cache, max_retries=2, sleep=rec))
+    assert r.status == "INVALID" and len(slept) == 2 and all(d >= 45.4 for d in slept)
+
+
+def test_local_model_server_errors_are_retryable():
+    litellm = pytest.importorskip("litellm")
+    from ablate.agents.adk_agent import classify_error
+    try:
+        raise RuntimeError("wrapped by ADK") from litellm.exceptions.APIConnectionError(
+            message="connection refused", llm_provider="ollama_chat", model="ollama_chat/qwen2.5:7b")
+    except RuntimeError as e:
+        c = classify_error(e)
+    assert c.retryable and type(c).__name__ == "AgentInfraError"

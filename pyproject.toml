@@ -17,6 +17,10 @@ dependencies = [
   "numpy>=1.26",
 ]
 
+[project.optional-dependencies]
+# Local models through Ollama (ADK LiteLlm wrapper): `uv sync --extra local`
+local = ["litellm>=1.50"]
+
 [project.scripts]
 ablate = "ablate.cli:main"
 

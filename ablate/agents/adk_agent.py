@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import re
 from typing import Any
 
 from google.adk.agents import LlmAgent
@@ -23,7 +24,7 @@ from google.genai import types
 from ..differ import render_instruction
 from ..preflight import Issue
 from ..world.retail.tools import TOOL_SPECS
-from .base import HARNESS_INSTRUCTION, AgentInfraError, AgentRun, MissingCredentials
+from .base import HARNESS_INSTRUCTION, AgentInfraError, AgentRun, MissingCredentials, QuotaExhausted
 from .recorder_plugin import OUTCOME_TOOL, RecorderPlugin, have_credentials, request_digest
 
 _TYPES = {"str": str, "list[str]": list[str]}
@@ -69,18 +70,41 @@ def generate_config(config: dict) -> types.GenerateContentConfig:
     return types.GenerateContentConfig(**kw)
 
 
+def is_local(model: str) -> bool:
+    """Local models served by Ollama through ADK's LiteLlm wrapper (no API key, no quota)."""
+    return str(model).startswith(("ollama/", "ollama_chat/"))
+
+
 def build_agent(config: dict) -> LlmAgent:
     instruction = render_instruction(config) + "\n\n" + HARNESS_INSTRUCTION
-    return LlmAgent(name="retail_agent", model=config["model"], instruction=instruction,
+    model = config["model"]
+    if is_local(model):
+        from google.adk.models.lite_llm import LiteLlm
+        # "ollama_chat/qwen3:8b#nothink" switches the model's thinking mode off.
+        # The suffix is part of the model id, so it is in the plan hash and the
+        # same for every arm.
+        name, _, flag = str(model).partition("#")
+        model = LiteLlm(model=name, reasoning_effort="none") if flag == "nothink" else LiteLlm(model=name)
+    return LlmAgent(name="retail_agent", model=model, instruction=instruction,
                     tools=build_tools(config), generate_content_config=generate_config(config))
 
 
+_LITELLM_INFRA = {"APIConnectionError", "Timeout", "RateLimitError", "ServiceUnavailableError",
+                  "InternalServerError", "BadGatewayError"}
+
+
 def _is_infra(e: BaseException) -> bool:
-    if isinstance(e, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+    if isinstance(e, (asyncio.TimeoutError, TimeoutError, ConnectionError, OSError)):
         return True
+    if type(e).__module__.startswith("litellm") and type(e).__name__ in _LITELLM_INFRA:
+        return True  # local model server down / overloaded: retry, never a violation
     if isinstance(e, genai_errors.APIError):
         return e.code in (408, 429) or (e.code or 0) >= 500
     return False
+
+
+_DAILY = re.compile(r"PerDay|per day|_daily|RequestsPerDay", re.IGNORECASE)
+_RETRY = re.compile(r"retry in ([0-9.]+)s", re.IGNORECASE)
 
 
 def _find(e: BaseException, kind, test=None):
@@ -94,6 +118,29 @@ def _find(e: BaseException, kind, test=None):
     return None
 
 
+def classify_error(e: BaseException) -> BaseException:
+    """Map a live-stack failure to what the scheduler should do with it."""
+    missing = _find(e, MissingCredentials)
+    if missing:
+        return missing  # ADK wraps plugin errors; surface the real one
+    absent = _find(e, BaseException, test=lambda x: type(x).__module__.startswith("litellm")
+                   and type(x).__name__ in ("NotFoundError", "AuthenticationError"))
+    if absent:  # misconfigured model server: stop the run, do not burn trials as INVALID
+        return RuntimeError(f"model server cannot serve this model: {str(absent)[:300]}")
+    infra = _find(e, BaseException, test=_is_infra)
+    if infra:
+        text = str(infra)
+        if _DAILY.search(text):
+            return QuotaExhausted(f"daily quota exhausted: {text[:300]}")
+        m = _RETRY.search(text)
+        return AgentInfraError(f"{type(infra).__name__}: {text[:500]}", retry_after=float(m.group(1)) if m else None)
+    # DECISION: any other runtime failure of the live stack (malformed
+    # function call, SDK error) makes the trial INVALID rather than a
+    # violation. INVALID rates are compared across arms (Fisher), so a
+    # change that breaks the stack shows up as INFRA_SUSPECTED.
+    return AgentInfraError(f"{type(e).__name__}: {e}", retryable=False)
+
+
 class AdkAgent:
     name = "adk"
 
@@ -104,7 +151,7 @@ class AdkAgent:
 
     async def run_trial(self, config: dict, scenario: dict, world, *, seed: int, cache_key: str) -> AgentRun:
         plugin = RecorderPlugin(world=world, cache=self.cache, trial_key=cache_key, limiter=self.limiter,
-                                toolset=set(config.get("tools", {})))
+                                toolset=set(config.get("tools", {})), needs_key=not is_local(config["model"]))
         app = App(name=APP_NAME, root_agent=build_agent(config), plugins=[plugin])
         runner = Runner(app=app, session_service=InMemorySessionService())
         session = await runner.session_service.create_session(app_name=APP_NAME, user_id="user")
@@ -115,18 +162,8 @@ class AdkAgent:
                 async with asyncio.timeout(self.timeout_s):
                     async for _ in runner.run_async(user_id="user", session_id=session.id, new_message=msg):
                         pass
-        except Exception as e:  # noqa: BLE001 - classified below
-            missing = _find(e, MissingCredentials)
-            if missing:
-                raise missing from None  # ADK wraps plugin errors; surface the real one
-            infra = _find(e, BaseException, test=_is_infra)
-            if infra:
-                raise AgentInfraError(f"{type(infra).__name__}: {infra}") from e
-            # DECISION: any other runtime failure of the live stack (malformed
-            # function call, SDK error) makes the trial INVALID rather than a
-            # violation. INVALID rates are compared across arms (Fisher), so a
-            # change that breaks the stack shows up as INFRA_SUSPECTED.
-            raise AgentInfraError(f"{type(e).__name__}: {e}", retryable=False) from e
+        except Exception as e:  # noqa: BLE001 - classified in classify_error
+            raise classify_error(e) from None
         finally:
             try:
                 await runner.close()
@@ -158,7 +195,8 @@ def make_probe(cache):
         else:
             try:
                 gc.max_output_tokens = 8
-                genai.Client().models.generate_content(model=cfg["model"], contents="ping", config=gc)
+                client = genai.Client()  # keep a reference: an unreferenced client closes early
+                client.models.generate_content(model=cfg["model"], contents="ping", config=gc)
             except genai_errors.ClientError as e:
                 if e.code == 400 or e.code == 404:
                     issues = [Issue("probe-rejected", "INCOMPATIBLE", f"API rejected the config: {e.message}", arm)]
