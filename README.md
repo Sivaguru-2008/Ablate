@@ -1,1 +1,148 @@
 # Ablate
+
+Release-gate culprit finder for ADK + Gemini agents (implements *Ablate build spec v2.2*).
+
+Given a **base** and a **candidate** agent config (prompt blocks, tool descriptions, model id,
+generation config), Ablate runs both on the same 24 scenarios in a deterministic fake retail world,
+checks with paired statistics whether the candidate violates more contracts, and names a change
+**X** only when all three hold:
+
+1. **necessity**: reverting X from the candidate makes it non-inferior to base (NI bound < δ = 10 pp)
+2. **sufficiency**: adding X alone to base makes it significantly worse (Holm across units)
+3. the **A/A control** is clean (replicate base arm, constant returned model version)
+
+Otherwise it abstains with a priced next step. There is no LLM in the oracle or the verdict path:
+contracts are Python over world state, the effect log and the agent's structured output.
+
+## Quick start
+
+```bash
+uv sync
+uv run ablate simulate                      # operating characteristics of the design
+uv run ablate preflight                     # lint, arms, cost, floor warning, MDE
+uv run ablate check --out runs/demo         # scripted agent: no API key needed
+uv run pytest                               # full suite (~3 min)
+```
+
+Live run on Gemini via ADK (needs `GOOGLE_API_KEY`):
+
+```bash
+uv run ablate preflight --agent adk --budget 5 --probe
+uv run ablate check --agent adk --budget 5 --rpm 60 --out runs/live
+```
+
+Every model call goes through `.ablate_cache/`; kill a run at any point and rerun the same
+command to resume with zero repeated API calls.
+
+Sealed-envelope benchmark (seal right before the demo, reveal on stage):
+
+```bash
+uv run ablate envelopes seal --count 5      # commits SHA-256(label || salt) to envelopes/hashes.json
+uv run ablate envelopes run                 # blind: never reads .sealed/
+uv run ablate envelopes reveal              # recomputes every hash, scores the verdicts
+```
+
+Other commands: `ablate report --run DIR`, `ablate pytest-gen --run DIR --arm cand --arm base`,
+`ablate fidelity --run DIR`, `ablate draft --run DIR --tool get_order_details` (live, Should tier).
+
+Exit codes for `check`: 0 APPROVE, 1 BLOCK, 3 NEEDS MORE EVIDENCE, 4 over budget.
+
+## Design constants (all in the plan hash)
+
+n = 24 scenarios, k = 5 trials per scenario per arm, δ = 10 pp, α = 0.05 familywise,
+bootstrap B = 10,000, sign-flip permutations = 20,000, fixed seed. With 3 revertible units:
+9 arms (base, cand, A/A, cand−X ×3, base+X ×3) and 1,080 trials.
+
+## Verdict rules
+
+| Condition | Result |
+|---|---|
+| A/A replicate differs from base (two-sided, unadjusted α) or returned model version changes | `DRIFT`, no attribution |
+| INVALID rate of any arm differs from base (Fisher, α) | `INFRA_SUSPECTED` |
+| cand not significantly worse than base (one-sided sign-flip) | `NOT_REPRODUCED` |
+| nec ∧ suf | `CONFIRMED` |
+| suf ∧ ¬nec | `MULTIPLE_CONTRIBUTORS` |
+| nec ∧ ¬suf | `INTERACTION_SUSPECTED` |
+| neither | `INCONCLUSIVE`, with "N more paired scenarios ≈ $X" |
+| arm not dependency-closed / config rejected by API | `NOT_REVERTIBLE` / `INCOMPATIBLE` |
+
+PR decision: **BLOCK** if reproduced and any unit is CONFIRMED or MULTIPLE_CONTRIBUTORS;
+**APPROVE** if not reproduced and the equivalence interval sits inside ±δ; otherwise
+**NEEDS MORE EVIDENCE**. The rupee impact line appears only with BLOCK or CONFIRMED and is
+always labelled "under this scenario mix".
+
+## Simulated operating characteristics (`ablate simulate`, 300 reps)
+
+| Metric | low heterogeneity | high heterogeneity |
+|---|---|---|
+| Type I error, reproduction gate | 0.023 | 0.017 |
+| False naming under the null | 0.000 | 0.003 |
+| A/A false DRIFT | 0.010 | 0.013 |
+| Power to reproduce (+40 pp on 12 of 24) | 0.993 | 0.993 |
+| Power to CONFIRM the planted culprit | 0.710 | 0.627 |
+| Decoy named | 0.017 | 0.007 |
+| NI power | 0.757 | 0.673 |
+| MDE, reproduction | 25 pp | 25 pp |
+| Affected-scenario floor | 7 | 7 |
+
+CONFIRM power is capped by NI power: the Newcombe bound deflated by the estimated design effect
+is deliberately conservative (spec), so at k = 5 and base violation rates around 5 % roughly a
+quarter of true culprits come back as MULTIPLE_CONTRIBUTORS or INCONCLUSIVE rather than CONFIRMED.
+Ablate abstains in those cases; it does not guess.
+
+## Build status
+
+| Step | Exit test | Status |
+|---|---|---|
+| 1 stats + simulate | `ablate simulate` prints type I error, power, MDE, NI power, floor | passes |
+| 2 verdict + scripted agent + seal | culprit CONFIRMED, decoys not named, nulls abstain, no API key; hashes.json written | passes |
+| 3 differ + preflight lint | thinking-level rule → INCOMPATIBLE; non-closed arms → NOT_REVERTIBLE | passes |
+| 4 world + oracle + ADK agent + recorder | 20 live trials on Flash-Lite, state-hashed | **offline only**: real ADK runner + plugin verified against a fake `BaseLlm`; the live test (`tests/test_adk_runner.py::test_live_flash_lite_20_trials`) is skipped without `GOOGLE_API_KEY` |
+| 5 runner, cache, rate limit | kill mid-run, rerun, zero repeated API calls | passes (fake LLM, real ADK stack) |
+| 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
+| 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
+| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | gate verified offline with supplied drafts; the Gemini call is untested without a key |
+| Stretch: Cloud Run Job | | not built |
+
+## Layout
+
+```
+ablate/
+  cli.py  plan.py  differ.py  preflight.py  verdict.py  impact.py  envelopes.py
+  drafter.py  fidelity.py  pipeline.py  results.py  scenarios.py  wording.py
+  world/base.py  world/retail/{data_model.py, tools.py, policy.md, seed_db.json}
+  oracle/contracts.py
+  agents/{adk_agent.py, recorder_plugin.py, scripted_agent.py, base.py}
+  runner/{scheduler.py, cache.py}
+  stats/{intervals.py (vendored evalsig), tests.py, simulate.py}
+  report/{pr_comment.py, html.py, pytest_gen.py}
+configs/base.yaml  configs/cand.yaml  scenarios/retail.yaml  scripts/extract_seed_db.py
+action.yml (GitHub Action stub)  THIRD_PARTY.md  tests/
+```
+
+## Decisions worth knowing (`# DECISION:` in code)
+
+- **numpy** is a dependency beyond the spec list: the simulator runs the sign-flip and bootstrap
+  thousands of times.
+- **Affected-scenario floor = 7**: at n = 24 the sign-flip p-value is a Monte Carlo estimate; at
+  m = 6 the best-case p (≈ 0.0157) is within about one Monte Carlo SD of α/3, so a 3-SD margin is
+  required. Sufficiency additionally requires at least the floor of scenarios to move the bad way.
+- **Holm for non-inferiority** uses the NI p-value: the smallest one-sided level at which the
+  combined (Newcombe ∨ bootstrap) upper bound falls below δ, found by bisection.
+- **DRIFT** compares returned model versions per *requested* model, so a model-id change unit is
+  not mistaken for drift.
+- **INFRA_SUSPECTED** tests every arm against base, unadjusted (more abstention, not less).
+- Live-stack errors other than 429/5xx/timeouts make a trial INVALID, never a violation; the
+  Fisher check turns a change that breaks the stack into INFRA_SUSPECTED.
+- **amount_inr** uses a fixed USD→INR rate of 84.0 (`world/retail/tools.py`).
+- Prices in `preflight.py` are list-price estimates for the budget cap; unknown models are priced
+  at the most expensive known tier. Edit `PRICES_PER_M` if prices change.
+- The default model is `gemini-2.5-flash-lite`; change `model:` in the configs if that id is retired.
+
+## Limits
+
+- The scripted agent's behaviour is driven by config text features; it exists so the statistics
+  and the envelope benchmark can be exercised without quota. It says nothing about Gemini.
+- Contracts read structured output from a `submit_outcome` tool; a model that never calls it
+  makes no claim, so `false_success_claim` cannot fire for that trial.
+- The drafter's AST screen and reduced builtins guard against accidents; they are not a sandbox.

@@ -16,7 +16,8 @@ class TrialResult:
     status: str = "OK"  # OK | INVALID (infrastructure failure, not a violation)
     violated: bool = False
     contracts: list[str] = field(default_factory=list)  # violated contract ids
-    model_version: str | None = None
+    model_requested: str = ""
+    model_version: str | None = None  # as returned by the API
     state_hash: str = ""
     effects: list[dict] = field(default_factory=list)  # world effect log
     trace: list[dict] = field(default_factory=list)  # [{tool, args, observation, turn}]

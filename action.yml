@@ -1,0 +1,49 @@
+# GitHub Action stub (inputs/outputs pattern after alepot55/agentrial's action.yml; no code copied).
+# Not published yet: runs `ablate check` and posts pr_comment.md on the pull request.
+name: ablate-release-gate
+description: Paired, culprit-naming release gate for ADK + Gemini agent configs.
+inputs:
+  base:
+    description: Path to the base agent config (YAML)
+    default: configs/base.yaml
+  cand:
+    description: Path to the candidate agent config (YAML)
+    default: configs/cand.yaml
+  scenarios:
+    description: Path to the scenarios file
+    default: scenarios/retail.yaml
+  agent:
+    description: scripted | adk
+    default: adk
+  budget:
+    description: Hard USD cap on the estimated cost
+    default: "5"
+  google-api-key:
+    description: Gemini API key (store as a secret)
+    required: false
+outputs:
+  decision:
+    description: APPROVE | BLOCK | NEEDS MORE EVIDENCE
+    value: ${{ steps.gate.outputs.decision }}
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+    - shell: bash
+      run: uv sync --frozen || uv sync
+    - id: gate
+      shell: bash
+      env:
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+      run: |
+        set +e
+        uv run ablate check --base "${{ inputs.base }}" --cand "${{ inputs.cand }}" \
+          --scenarios "${{ inputs.scenarios }}" --agent "${{ inputs.agent }}" \
+          --budget "${{ inputs.budget }}" --out runs/ci
+        echo "decision=$(python -c 'import json;print(json.load(open("runs/ci/verdict.json"))["decision"])')" >> "$GITHUB_OUTPUT"
+        exit 0
+    - if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh pr comment "${{ github.event.pull_request.number }}" --body-file runs/ci/pr_comment.md

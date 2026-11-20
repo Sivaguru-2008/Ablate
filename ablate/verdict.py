@@ -82,7 +82,7 @@ class Verdict:
     status: str
     decision: str
     aa_p: float | None = None
-    model_versions: list[str] = field(default_factory=list)
+    model_versions: dict = field(default_factory=dict)
     infra_p: dict = field(default_factory=dict)
     repro_p: float | None = None
     repro_diff: float | None = None
@@ -108,13 +108,14 @@ class Verdict:
 # tabulation
 
 
-def tabulate(plan: Plan, results) -> tuple[dict[str, ArmCounts], list[str]]:
-    """Per-arm, per-scenario counts aligned to plan.scenarios."""
+def tabulate(plan: Plan, results) -> tuple[dict[str, ArmCounts], dict[str, list[str]]]:
+    """Per-arm, per-scenario counts aligned to plan.scenarios, plus the
+    returned model versions grouped by requested model id."""
     idx = {s: i for i, s in enumerate(plan.scenarios)}
     arms = set(plan.arm_names)
     n = plan.n
     counts = {a: ArmCounts(np.zeros(n, np.int64), np.zeros(n, np.int64), np.zeros(n, np.int64)) for a in arms}
-    versions: set[str] = set()
+    versions: dict[str, set[str]] = {}
     seen: set[tuple] = set()
     for r in results:
         if r.plan_hash != plan.plan_hash:
@@ -132,8 +133,8 @@ def tabulate(plan: Plan, results) -> tuple[dict[str, ArmCounts], list[str]]:
         c.valid[i] += 1
         c.viol[i] += int(bool(r.violated))
         if r.model_version:
-            versions.add(r.model_version)
-    return counts, sorted(versions)
+            versions.setdefault(r.model_requested or "?", set()).add(r.model_version)
+    return counts, {m: sorted(vs) for m, vs in sorted(versions.items())}
 
 
 def _paired(counts: dict[str, ArmCounts], t: str, r: str):
@@ -168,12 +169,12 @@ def verdict(plan: Plan, results) -> Verdict:
     return verdict_from_counts(plan, counts, versions)
 
 
-def verdict_from_counts(plan: Plan, counts: dict[str, ArmCounts], versions: list[str]) -> Verdict:
+def verdict_from_counts(plan: Plan, counts: dict[str, ArmCounts], versions: dict[str, list[str]]) -> Verdict:
     a = plan.alpha
     U = len(plan.revertible)
     floor = st.affected_scenario_floor(plan.n, max(1, U), a, plan.flips)
     v = Verdict(plan_hash=plan.plan_hash, status="", decision=NEEDS_MORE_EVIDENCE,
-                model_versions=list(versions), affected_floor=floor)
+                model_versions=dict(versions), affected_floor=floor)
     for u in plan.units:
         if u.status != "REVERTIBLE":
             v.units.append(UnitVerdict(unit=u.id, status=u.status, note=u.reason))
@@ -192,8 +193,9 @@ def verdict_from_counts(plan: Plan, counts: dict[str, ArmCounts], versions: list
     drift = []
     if v.aa_p < a:
         drift.append(f"A/A replicate differs from base (two-sided p = {v.aa_p:.4f} < {a})")
-    if len(versions) > 1:
-        drift.append(f"returned model version changed mid-run: {', '.join(versions)}")
+    for req, got in versions.items():
+        if len(got) > 1:
+            drift.append(f"returned model version for {req} changed mid-run: {', '.join(got)}")
     if drift:
         v.status = DRIFT
         v.reasons += drift

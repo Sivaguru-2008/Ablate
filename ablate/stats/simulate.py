@@ -77,7 +77,7 @@ def run_setting(plan: Plan, rng, *, effect: float, m_affected: int, reps: int,
         if effect > 0:
             aff[rng.permutation(plan.n)[:m_affected]] = 1.0
         counts = _draw(rng, plan, _rates(plan, base, effect, aff))
-        v = verdict_from_counts(plan, counts, ["sim"])
+        v = verdict_from_counts(plan, counts, {"sim": ["sim"]})
         repro += v.repro_p is not None and v.repro_p < plan.alpha
         aa_fail += v.aa_p is not None and v.aa_p < plan.alpha
         named_any += bool(v.named)
