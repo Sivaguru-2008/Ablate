@@ -193,16 +193,23 @@ def make_probe(cache):
         elif not have_credentials():
             issues = [Issue("probe-skipped", "WARN", "no API key; live probe skipped", arm)]
         else:
+            model_version = None
+            cacheable = True
             try:
                 gc.max_output_tokens = 8
                 client = genai.Client()  # keep a reference: an unreferenced client closes early
-                client.models.generate_content(model=cfg["model"], contents="ping", config=gc)
+                resp = client.models.generate_content(model=cfg["model"], contents="ping", config=gc)
+                model_version = getattr(resp, "model_version", None)
             except genai_errors.ClientError as e:
+                if e.code == 429:
+                    raise QuotaExhausted(f"probe quota exhausted: {str(e)[:300]}") from None
                 if e.code == 400 or e.code == 404:
                     issues = [Issue("probe-rejected", "INCOMPATIBLE", f"API rejected the config: {e.message}", arm)]
                 else:
+                    cacheable = False
                     issues = [Issue("probe-error", "WARN", f"probe failed with {e.code}", arm)]
-            cache.put_call(key, {"issues": [i.__dict__ for i in issues]})
+            if cacheable:
+                cache.put_call(key, {"issues": [i.__dict__ for i in issues], "model_version": model_version})
         seen[key] = issues
         return [Issue(i.rule, i.severity, i.message, arm) for i in issues]
 

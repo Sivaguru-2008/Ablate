@@ -121,10 +121,15 @@ def _probe(a):
 
 
 def cmd_preflight(a) -> int:
+    from .agents.base import QuotaExhausted
     from .scenarios import load_scenarios
     base, cand = _load_pair(a)
     kw = {"k": a.k} if a.k else {}
-    pf = preflight.build(base, cand, load_scenarios(a.scenarios), agent=a.agent, budget_usd=a.budget, probe=_probe(a), **kw)
+    try:
+        pf = preflight.build(base, cand, load_scenarios(a.scenarios), agent=a.agent, budget_usd=a.budget, probe=_probe(a), **kw)
+    except QuotaExhausted as e:
+        say(f"[yellow]Stopped: {e}[/yellow]")
+        return 7
     _print_preflight(pf, show_mde=not a.no_mde)
     if preflight.over_budget(pf, a.budget):
         say("[red]Over budget: `ablate check` would refuse to run.[/red]")
@@ -223,13 +228,25 @@ def cmd_fidelity(a) -> int:
 
 
 def cmd_draft(a) -> int:
+    from .agents.base import MissingCredentials, QuotaExhausted
     from .drafter import draft_and_gate
     from .results import read_jsonl
     results = read_jsonl(Path(a.run) / "results.jsonl")
-    out = draft_and_gate(results, tool=a.tool, model=a.model, out_dir=Path(a.run) / "drafts")
+    try:
+        out = draft_and_gate(results, tool=a.tool, model=a.model, out_dir=Path(a.run) / "drafts")
+    except MissingCredentials as e:
+        say(f"[red]{e}[/red]. Set GOOGLE_API_KEY to run a live draft.")
+        return 2
+    except QuotaExhausted as e:
+        say(f"[yellow]Stopped: {e}[/yellow]")
+        return 7
     say(f"draft for {a.tool}: {'ACCEPTED' if out['accepted'] else 'REJECTED'} by the fidelity gate "
-        f"({out['gate']['passed']}/{out['gate']['checked']} recorded trials replay exactly)")
+        f"(replays recorded runs exactly ({out['gate']['passed']}/{out['gate']['checked']}))")
+    if out.get("model_version"):
+        say(f"returned model version: {out['model_version']}")
     say(f"code: {out['path']}")
+    if out.get("raw_path"):
+        say(f"raw response: {out['raw_path']}")
     return 0 if out["accepted"] else 1
 
 

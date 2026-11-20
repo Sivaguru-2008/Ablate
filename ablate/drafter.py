@@ -80,15 +80,18 @@ def compile_draft(code: str, tool: str):
     return fn
 
 
-def request_draft(tool: str, examples: list[dict], model: str) -> str:
-    from google import genai
-    from google.genai import types
-
+def request_draft_with_meta(tool: str, examples: list[dict], model: str) -> tuple[str, dict]:
     import random
     import time
 
-    from google.genai import errors
+    from google import genai
+    from google.genai import errors, types
 
+    from .agents.base import MissingCredentials, QuotaExhausted
+    from .agents.recorder_plugin import have_credentials
+
+    if not have_credentials():
+        raise MissingCredentials("no GOOGLE_API_KEY / GEMINI_API_KEY set for live draft")
     client = genai.Client()  # keep a reference: an unreferenced client closes before the request
     config = types.GenerateContentConfig(
         temperature=0.0, response_mime_type="application/json",
@@ -96,31 +99,55 @@ def request_draft(tool: str, examples: list[dict], model: str) -> str:
     for attempt in range(6):
         try:
             resp = client.models.generate_content(model=model, contents=build_prompt(tool, examples), config=config)
-            return json.loads(resp.text)["code"]
+            code = json.loads(resp.text)["code"]
+            raw = resp.model_dump(mode="json", exclude_none=True) if hasattr(resp, "model_dump") else {"text": resp.text}
+            meta = {
+                "model_requested": model,
+                "model_version": getattr(resp, "model_version", None),
+                "raw_response": raw,
+            }
+            return code, meta
         except errors.APIError as e:
+            text = str(e)
+            if e.code == 429 and ("PerDay" in text or "per day" in text.lower() or "RequestsPerDay" in text):
+                raise QuotaExhausted(f"daily quota exhausted: {text[:300]}") from None
             if e.code not in (429, 500, 503) or attempt == 5:
+                if e.code == 429:
+                    raise QuotaExhausted(f"rate limit / quota exhausted: {text[:300]}") from None
                 raise
             time.sleep(min(60.0, 2.0 * 2 ** attempt) + random.uniform(0, 1))  # busy model: back off and retry
     raise RuntimeError("unreachable")
 
 
+def request_draft(tool: str, examples: list[dict], model: str) -> str:
+    code, _ = request_draft_with_meta(tool, examples, model)
+    return code
+
+
 def draft_and_gate(results, *, tool: str = "get_order_details", model: str = "gemini-3.8-flash",
-                   out_dir: Path | None = None, code: str | None = None) -> dict:
+                   out_dir: Path | None = None, code: str | None = None, meta: dict | None = None) -> dict:
     if tool not in TOOL_SPECS:
         raise ValueError(f"unknown tool {tool}")
     examples = _examples(results, tool)
     if not examples:
         raise ValueError(f"no recorded calls to {tool} in this run")
     if code is None:
-        code = request_draft(tool, examples, model)
+        code, meta = request_draft_with_meta(tool, examples, model)
     path = None
+    raw_path = None
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{tool}.py"
         path.write_text(code, encoding="utf-8")
+        if meta is not None:
+            raw_path = out_dir / f"{tool}.raw.json"
+            raw_path.write_text(json.dumps({**meta, "code": code}, indent=2, sort_keys=True), encoding="utf-8")
+    model_version = meta.get("model_version") if meta else None
     try:
         fn = compile_draft(code, tool)
     except (SyntaxError, UnsafeDraft) as e:
-        return {"accepted": False, "path": str(path), "gate": {"checked": 0, "passed": 0, "failures": [str(e)]}}
+        return {"accepted": False, "path": str(path), "raw_path": str(raw_path) if raw_path else None,
+                "model_version": model_version, "gate": {"checked": 0, "passed": 0, "failures": [str(e)]}}
     gate = check_results(results, overrides={tool: fn}, tools={tool})
-    return {"accepted": gate["ok"], "path": str(path), "gate": gate}
+    return {"accepted": gate["ok"], "path": str(path), "raw_path": str(raw_path) if raw_path else None,
+            "model_version": model_version, "gate": gate}

@@ -55,3 +55,14 @@ def test_unsafe_draft_rejected(results):
     with pytest.raises(UnsafeDraft):
         compile_draft(UNSAFE, "get_order_details")
     assert not draft_and_gate(results, code=UNSAFE)["accepted"]
+
+
+def test_draft_saves_raw_response_and_model_version(results, tmp_path):
+    import json
+    meta = {"model_requested": "gemini-3.8-flash", "model_version": "gemini-3.8-flash-001", "raw_response": {"text": "{}"}}
+    out = draft_and_gate(results, code=GOOD, meta=meta, out_dir=tmp_path)
+    assert out["accepted"] and out["model_version"] == "gemini-3.8-flash-001"
+    raw_file = tmp_path / "get_order_details.raw.json"
+    assert raw_file.exists() and out["raw_path"] == str(raw_file)
+    saved = json.loads(raw_file.read_text(encoding="utf-8"))
+    assert saved["model_version"] == "gemini-3.8-flash-001" and "raw_response" in saved
