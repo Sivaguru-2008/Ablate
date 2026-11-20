@@ -151,7 +151,7 @@ Ablate abstains in those cases; it does not guess.
 | 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
 | 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
 | 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | passes live: `gemini-3.5-flash` drafted it and the gate accepted it (1,064/1,064 recorded trials replay exactly); wrong and unsafe drafts are rejected in tests. The gate can only check behaviour the recordings contain (no recorded trial looked up a missing order) |
-| Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | job, Dockerfile and deploy script built; tested locally against a `file://` destination. Not yet deployed (needs `gcloud auth login` and a billing-enabled project) |
+| Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | passes: job `ablate-gate` (asia-south1) execution `ablate-gate-x92p9` ran the 1,080-trial scripted gate and wrote BLOCK / `block.confirm` CONFIRMED to `gs://<bucket>/ablate-runs/20261120T111129Z-889d8f9b7d8c/` |
 
 ## Layout
 
