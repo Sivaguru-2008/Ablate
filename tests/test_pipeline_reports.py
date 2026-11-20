@@ -45,8 +45,10 @@ def test_null_release_abstains(root, tmp_path):
 def test_pr_comment_block_with_rupees(demo):
     md = demo.pr_markdown
     assert "BLOCK" in md and "₹" in md and "per 1,000 conversations" in md and "under this scenario mix" in md
+    assert "scripted" in md.lower() and "constructed fault" in md.lower()
     assert wording.violations(md, pr=True) == []
     html = (demo.run_dir / "report.html").read_text(encoding="utf-8")
+    assert "scripted" in html.lower() and "constructed fault" in html.lower()
     assert wording.violations(html, pr=True) == []
 
 
@@ -56,10 +58,14 @@ def test_wording_guard():
     assert wording.violations("firstly fine? onlyness", pr=True) == []
 
 
-def test_fidelity_replays_exactly(demo):
+def test_fidelity_replays_exactly(demo, capsys):
+    from ablate.cli import main
     from ablate.fidelity import check_results
     rep = check_results(demo.results[:200])
     assert rep["ok"] and rep["checked"] == 200
+    rc = main(["fidelity", "--run", str(demo.run_dir), "--arm", "base"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "replays recorded runs exactly (" in out and "matches production" not in out.lower()
 
 
 def test_generated_pytest_red_on_cand_green_on_base(demo, tmp_path):

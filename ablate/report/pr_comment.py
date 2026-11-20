@@ -47,7 +47,8 @@ def unit_rows(plan: Plan, v: Verdict) -> list[str]:
 
 
 def render(plan: Plan, v: Verdict, results=None) -> str:
-    lines = [f"## {ICON.get(v.decision, '')} Ablate release gate: {v.decision}", ""]
+    tag = " (scripted)" if plan.agent == "scripted" else ""
+    lines = [f"## {ICON.get(v.decision, '')} Ablate release gate: {v.decision}{tag}", ""]
     head = STATUS_TEXT.get(v.status, v.status)
     if v.status in ("REPRODUCED", "NOT_REPRODUCED") and v.base_rate is not None:
         head += (f": candidate violates a contract in {v.cand_rate:.1%} of trials vs {v.base_rate:.1%} on base "
@@ -55,6 +56,8 @@ def render(plan: Plan, v: Verdict, results=None) -> str:
     else:
         head += "."
     lines.append(head)
+    if plan.agent == "scripted":
+        lines.append("- **Scripted demo (constructed fault):** results come from the deterministic scripted agent, not live Gemini.")
     for r in v.reasons:
         lines.append(f"- {r}")
     if v.equivalence:

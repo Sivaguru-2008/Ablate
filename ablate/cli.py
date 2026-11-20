@@ -33,14 +33,14 @@ def cmd_simulate(a) -> int:
     say(f"[bold]Design[/bold]: n = {plan.n} scenarios, k = {plan.k}, δ = {plan.delta:.0%}, α = {plan.alpha} familywise, "
         f"B = {plan.bootstrap_B:,}, flips = {plan.flips:,}, {len(plan.revertible)} units → {len(plan.arms)} arms, "
         f"{plan.n_trials:,} trials")
-    say(f"Planted culprit: +{a.effect:.0%} violation rate on {a.affected} of {plan.n} scenarios; "
+    say(f"Constructed fault: +{a.effect:.0%} violation rate on {a.affected} of {plan.n} scenarios; "
         f"{a.reps} reps per setting (grid {a.grid_reps}).")
     outs = {}
     with console.status("simulating…") as status:
         for h in levels:
             outs[h] = simulate(plan, reps=a.reps, grid_reps=a.grid_reps, m_affected=a.affected, planted_effect=a.effect,
                                heterogeneity=h, seed=a.seed, progress=lambda m, h=h: status.update(f"{h}: {m}"))
-    t = Table(title="Operating characteristics (this design)")
+    t = Table(title="Operating characteristics (design simulation — constructed fault)")
     t.add_column("Metric")
     for h in levels:
         t.add_column(f"{h} heterogeneity", justify="right")
@@ -51,13 +51,14 @@ def cmd_simulate(a) -> int:
     row("Type I error, reproduction gate (cand = base)", lambda o: f"{o['type1_repro']:.3f}")
     row("False naming under the null (any unit named)", lambda o: f"{o['false_named_null']:.3f}")
     row("A/A false DRIFT rate", lambda o: f"{o['aa_false_drift']:.3f}")
-    row("Power to reproduce the planted regression", lambda o: f"{o['power_repro']:.3f}")
-    row("Power to CONFIRM the planted culprit", lambda o: f"{o['power_confirm']:.3f}")
-    row("Decoy named when a culprit is planted", lambda o: f"{o['decoy_named']:.3f}")
+    row("Power to reproduce the constructed fault", lambda o: f"{o['power_repro']:.3f}")
+    row("Power to CONFIRM the constructed fault", lambda o: f"{o['power_confirm']:.3f}")
+    row("Decoy named when a constructed fault is present", lambda o: f"{o['decoy_named']:.3f}")
     row("NI power (reverting the culprit restores base)", lambda o: f"{o['ni_power']:.3f}")
     row("MDE, reproduction (≥ 80% power)", lambda o: f"{o['mde_repro']:.0%}" if o["mde_repro"] else "> 60%")
     row("MDE, CONFIRMED (≥ 80% power)", lambda o: f"{o['mde_confirm']:.0%}" if o["mde_confirm"] else "not reached (NI-limited)")
     row("Affected-scenario floor", lambda o: str(o["floor"]))
+    row("Mean trials per run (fixed design)", lambda o: f"{o['plan']['trials']:,}")
     console.print(t)
     o = outs[levels[0]]
     say(f"[dim]Affected-scenario floor: with fewer than {o['floor']} scenarios moving, CONFIRMED is impossible at "
@@ -89,6 +90,8 @@ def _print_preflight(pf, show_mde: bool) -> None:
     if pf.plan.release_status != "OK":
         say("[red bold]Release INCOMPATIBLE: base or candidate config is rejected by the model API.[/red bold]")
     say(preflight.estimate_line(pf))
+    if pf.plan.agent == "scripted":
+        say("[dim]Mode: scripted demo (constructed fault; not live Gemini)[/dim]")
     for w in pf.warnings:
         say(f"[yellow]warning[/yellow] {w}")
     for n in pf.plan.notes:
@@ -170,7 +173,8 @@ def cmd_check(a) -> int:
         n_trials_hint = pf.plan.n_trials
         prog, make, state = _progress_factory("trials")
         with prog:
-            cb = make(f"{a.agent} trials", n_trials_hint)
+            label = "scripted trials (not live Gemini)" if a.agent == "scripted" else f"{a.agent} trials"
+            cb = make(label, n_trials_hint)
             res = run_check(base, cand, Path(a.scenarios), out, agent=a.agent, k=a.k, budget_usd=a.budget,
                             concurrency=a.concurrency, rpm=a.rpm, cache_dir=Path(a.cache_dir) if a.cache_dir else None,
                             progress=cb, probe=_probe(a))
@@ -225,7 +229,7 @@ def cmd_fidelity(a) -> int:
     if a.arm:
         results = [r for r in results if r.arm == a.arm]
     rep = check_results(results)
-    say(f"replayed {rep['checked']} trials: {rep['passed']} exact matches")
+    say(f"replays recorded runs exactly ({rep['passed']}/{rep['checked']})")
     for f in rep["failures"]:
         say(f"  [red]mismatch[/red] {f['trial']}: {f['why']}")
     return 0 if rep["ok"] else 1
@@ -264,7 +268,7 @@ def cmd_envelopes(a) -> int:
     sealed = Path(a.sealed_dir)
     if a.action == "seal":
         meta = envelopes.seal(env, sealed, count=a.count)
-        t = Table(title=f"Sealed {len(meta['envelopes'])} envelopes at {meta['sealed_at']}")
+        t = Table(title=f"Sealed {len(meta['envelopes'])} envelopes (constructed-fault benchmark) at {meta['sealed_at']}")
         t.add_column("Envelope")
         t.add_column("SHA-256(label ‖ salt)")
         for rid, h in meta["envelopes"].items():
@@ -280,7 +284,8 @@ def cmd_envelopes(a) -> int:
                 return make(rid, 1080)
             idx = envelopes.run(env, Path(a.scenarios), agent=a.agent, budget_usd=a.budget,
                                 concurrency=a.concurrency, rpm=a.rpm, progress=factory)
-        t = Table(title="Blind verdicts (labels not read)")
+        mode = f"{a.agent} — not live Gemini" if a.agent == "scripted" else a.agent
+        t = Table(title=f"Blind verdicts (labels not read; agent: {mode})")
         for c in ("Envelope", "Decision", "Status", "Named"):
             t.add_column(c)
         for rid, r in idx["releases"].items():
@@ -290,8 +295,8 @@ def cmd_envelopes(a) -> int:
         return 0
     if a.action == "reveal":
         out = envelopes.reveal(env, sealed)
-        t = Table(title="Reveal")
-        for c in ("Envelope", "Hash", "Planted", "Expected", "Ablate said", "Correct"):
+        t = Table(title="Reveal (constructed-fault benchmark)")
+        for c in ("Envelope", "Hash", "Constructed fault", "Expected", "Ablate said", "Correct"):
             t.add_column(c)
         for r in out["rows"]:
             exp = f"{r['expected_decision']} {', '.join(r['expected_named'] or []) or ''}".strip()
@@ -300,7 +305,7 @@ def cmd_envelopes(a) -> int:
                       "[green]yes[/green]" if r["correct"] else "[red]no[/red]")
         console.print(t)
         say(f"Hashes recomputed: {'all match hashes.json' if out['hashes_ok'] else 'MISMATCH'} · "
-            f"sealed {out['sealed_at']} · run {out['run_at']} ({'run after seal' if out['ordered'] else 'order not verified'})")
+            f"sealed {out['sealed_at']} · run {out['run_at']} ({'run after seal' if out['ordered'] else 'order not checked'})")
         say(f"Score: {out['correct']}/{out['total']} envelopes answered correctly")
         return 0 if out["hashes_ok"] else 6
     raise ValueError(a.action)
@@ -334,11 +339,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ablate", description="Release-gate culprit finder for ADK + Gemini agents.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("simulate", help="operating characteristics of the design (planted-fault simulation)")
+    s = sub.add_parser("simulate", help="operating characteristics of the design (constructed-fault simulation)")
     s.add_argument("--reps", type=int, default=300)
     s.add_argument("--grid-reps", type=int, default=120)
-    s.add_argument("--affected", type=int, default=12, help="scenarios the planted culprit moves")
-    s.add_argument("--effect", type=float, default=0.40, help="planted violation-rate increase on affected scenarios")
+    s.add_argument("--affected", type=int, default=12, help="scenarios the constructed fault moves")
+    s.add_argument("--effect", type=float, default=0.40, help="constructed-fault violation-rate increase on affected scenarios")
     s.add_argument("--heterogeneity", choices=["low", "high", "both"], default="both")
     s.add_argument("--seed", type=int, default=7)
     s.add_argument("--json", help="also write results to this JSON file")

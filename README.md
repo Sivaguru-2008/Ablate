@@ -212,6 +212,38 @@ action.yml (GitHub Action stub)  THIRD_PARTY.md  tests/
 The report warns when base itself fails most scenarios, and notes when the A/A control is
 vacuous because decoding is deterministic.
 
+## What this does and does not show
+
+- **Constructed-fault caveat:** `configs/base.yaml` → `configs/cand.yaml` and the sealed envelopes
+  use **constructed faults** (deliberately weakened policy blocks) inside a deterministic retail
+  simulator extracted from `tau2-bench`. This tests whether Ablate's paired statistics and
+  two-sided (necessity + sufficiency) gate separate a constructed culprit from decoys and abstain
+  on nulls; it does not establish how often real production regressions are single-unit or how
+  closely the simulator mirrors live traffic. Fidelity checks report that the world **replays
+  recorded runs exactly (N/N)** — deterministic trace replay, not production equivalence.
+- **Scripted vs live runs:** `--agent scripted` runs a deterministic feature-driven fake agent
+  (1,080 trials in `runs/demo`, 5 sealed envelopes in `runs/envelopes_demo`, and Cloud Run Job
+  `ablate-gate-x92p9`); scripted outputs are labelled `scripted` and `constructed fault` and say
+  nothing about Gemini.
+- **Live model pair actually used & trials actually run:**
+  - **Live Gemini (`gemini-3.5-flash-lite` base → `gemini-3.5-flash-lite` cand):** 20/20 trials
+    passed in `test_live_flash_lite_20_trials`, a 12-trial pilot ran, and **50/1,080 trials**
+    completed on the earlier 2-turn plan (`94452ca956aa`; 277 cached calls, all returning
+    `model_version: gemini-3.5-flash-lite`) before Free Tier's 500 req/day limit paused the run
+    (exit 7). On the current 3-turn plan (`533dc15fabcb`), **0/1,080 live Gemini trials** have
+    completed yet (awaiting a funded key / quota).
+  - **Local ADK + Ollama (`ollama_chat/qwen2.5:7b` base → `ollama_chat/qwen2.5:7b` cand):**
+    **1,080/1,080 trials** (2-turn scenarios, `runs/local`) and **432/432 trials** (`k = 2`,
+    3-turn scenarios, `runs/local_k2`) ran end to end.
+- **Related tools (named honestly):**
+  - **Shadow** — diagnoses PR regressions and checks proposed fixes, without paired two-sided
+    (necessity + sufficiency) per-unit ablation arms or a published false-attribution control.
+  - **ablate-cli** — performs section-level prompt ablation, without paired non-inferiority
+    bounds, A/A drift checks, or priced abstention.
+  - **git_bayesect** — a related Bayesian bisect tool for locating regressions across git commit
+    history with noisy tests, rather than ablating individual config units inside a single release
+    in both directions.
+
 ## Limits
 
 - The scripted agent's behaviour is driven by config text features; it exists so the statistics

@@ -42,11 +42,14 @@ def render(plan: Plan, v: Verdict, results) -> str:
         s[0] += int(r.violated)
         s[1] += 1
     cls = v.decision.split()[0]
+    tag = " <span class='muted'>(scripted)</span>" if plan.agent == "scripted" else ""
     out = [f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
            f"<title>Ablate report</title><style>{CSS}</style></head><body><main>",
-           f"<h1>Ablate release gate <span class='decision {cls}'>{html.escape(v.decision)}</span></h1>",
+           f"<h1>Ablate release gate <span class='decision {cls}'>{html.escape(v.decision)}</span>{tag}</h1>",
            f"<p class='muted'>Status {html.escape(v.status)} · plan <code>{plan.plan_hash[:12]}</code> · "
            f"n = {plan.n} · k = {plan.k} · δ = {plan.delta:.0%} · α = {plan.alpha} · agent {html.escape(plan.agent)}</p>"]
+    if plan.agent == "scripted":
+        out.append("<p><b>Scripted demo (constructed fault):</b> results come from the deterministic scripted agent, not live Gemini.</p>")
     if v.reasons:
         out.append("<ul>" + "".join(f"<li>{html.escape(r)}</li>" for r in v.reasons) + "</ul>")
     if v.decision == BLOCK or any(u.status == CONFIRMED for u in v.units):

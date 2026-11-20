@@ -144,7 +144,7 @@ footer strong{color:var(--fg)}
     }
     const ok = r.revealed && r.hash_ok;
     const cls = !r.revealed ? "" : ok ? "ok" : "badp";
-    const head = !r.revealed ? "SEALED" : ok ? "VERIFIED" : "HASH MISMATCH";
+    const head = !r.revealed ? "SEALED" : ok ? "HASH MATCHED" : "HASH MISMATCH";
     const verdict = r.ran ? `${esc(r.decision)}${r.named.length ? " · " + r.named.map(esc).join(", ") : ""}` : "not run";
     const truth = r.revealed ? `${esc(r.expected_decision)}${r.expected_named.length ? " · " + r.expected_named.map(esc).join(", ") : ""}` : "sealed";
     return `<section class="card panel ${cls}" aria-label="Envelope ${esc(r.release)} detail">
@@ -152,7 +152,7 @@ footer strong{color:var(--fg)}
       <span style="font-size:15px">Blind verdict: <strong>${verdict}</strong></span>
       <span style="font-size:15px">True answer: <strong>${truth}</strong>${r.revealed ? ` <span class="muted">(${esc(KIND[r.kind] || r.kind)})</span>` : ""}</span>
       <div class="hashes">locked&nbsp;&nbsp;${esc(r.committed)}<br>rebuilt ${r.revealed ? esc(r.recomputed || "—") + (r.hash_ok ? " ✓" : " ✗") : "—"}</div>
-      <span class="note">Commitment written to hashes.json at ${esc(when(a.sealed_at))}; the blind run started ${esc(when(a.run_at))}${a.ordered ? " (after sealing ✓)" : " (order not verified)"}. Agent: ${esc(a.agent || "—")}.</span>
+      <span class="note">Commitment written to hashes.json at ${esc(when(a.sealed_at))}; the blind run started ${esc(when(a.run_at))}${a.ordered ? " (after sealing ✓)" : " (order not checked)"}. Agent: ${esc(a.agent === "scripted" ? "scripted (not live Gemini)" : (a.agent || "—"))}.</span>
       ${r.units && Object.keys(r.units).length ? `<div class="units">${Object.entries(r.units).map(([u,s]) => `${esc(u)}: ${esc(s)}`).join("<br>")}</div>` : ""}
       <span style="display:flex;gap:16px;flex-wrap:wrap">
         ${r.report ? `<a href="/files/envelopes/${esc(r.release)}/report.html" target="_blank" rel="noopener">Blind-run report</a>` : ""}
@@ -180,12 +180,12 @@ uv run ablate envelopes run</pre>
     app.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:4px">
         <h1>Assurance</h1>
-        <span class="sub">Attribution accuracy on a pre-registered benchmark of ${n} sealed releases. Ground truth is committed to hashes.json before execution; Ablate runs blind and each envelope is opened here by recomputing its hash.</span>
+        <span class="sub">Attribution accuracy on a pre-registered constructed-fault benchmark of ${n} sealed releases. Ground truth is committed to hashes.json before execution; Ablate runs blind and each envelope is opened here by recomputing its hash.</span>
       </div>
       <div class="stats">
         <div class="stat"><span class="k">Correct attribution</span><span class="v">${s.correct_attribution}<span class="d"> / ${s.attribution_cases}</span></span><span class="d">culprit cases opened</span></div>
         <div class="stat"><span class="k">Correct abstention</span><span class="v">${s.correct_abstention}<span class="d"> / ${s.abstention_cases}</span></span><span class="d">no-culprit cases opened</span></div>
-        <div class="stat"><span class="k">False attribution</span><span class="v" style="color:var(--bad)">${s.false_attribution}</span><span class="d">named a unit that was not planted</span></div>
+        <div class="stat"><span class="k">False attribution</span><span class="v" style="color:var(--bad)">${s.false_attribution}</span><span class="d">named a unit that was not a constructed fault</span></div>
         <div class="stat"><span class="k">False-attribution bound</span><span class="v">${ub == null ? "—" : "≤ " + pct(ub)}</span><span class="d">95% one-sided, ${s.scored} of ${n} opened</span></div>
       </div>
       ${state.error ? `<div class="err" role="alert">${esc(state.error)}</div>` : ""}
@@ -201,7 +201,7 @@ uv run ablate envelopes run</pre>
             <div role="row" class="row ${r.release === state.selected ? "sel" : ""}">
               <span role="cell" style="font-weight:600">${esc(r.release)}</span>
               <span role="cell">${trueAnswer(r)}</span>
-              <span role="cell" class="muted">${esc(a.agent || "—")}</span>
+              <span role="cell" class="muted">${esc(a.agent === "scripted" ? "scripted (not live)" : (a.agent || "—"))}</span>
               <span role="cell">${dec(r.decision)}<br>${r.ran ? named(r.named) : ""}</span>
               <span role="cell">${fingerprint(r)}</span>
               <span role="cell">${r.revealed
@@ -252,7 +252,7 @@ uv run ablate envelopes run</pre>
             <span role="cell">${dec(r.decision)}<br><span class="muted" style="font-size:12px">${esc(r.status)}</span></span>
             <span role="cell">${named(r.named)}</span>
             <span role="cell">${pct(r.base_rate)} → <strong>${pct(r.cand_rate)}</strong></span>
-            <span role="cell"><span class="muted">${esc(r.agent || "—")}</span><br><span class="units">${esc(r.model || "")}${r.k ? ` · n=${r.n} k=${r.k}` : ""}</span></span>
+            <span role="cell"><span class="muted">${esc(r.agent === "scripted" ? "scripted (constructed fault)" : (r.agent || "—"))}</span><br><span class="units">${esc(r.model || "")}${r.k ? ` · n=${r.n} k=${r.k}` : ""}</span></span>
             <span role="cell" style="display:flex;gap:10px;flex-wrap:wrap">${r.files.map(f => `<a href="/files/runs/${encodeURIComponent(r.name)}/${esc(f)}" target="_blank" rel="noopener">${esc(f)}</a>`).join("")}</span>
           </div>`).join("")}
         </div>` : `<div class="empty">No finished runs in <span class="mono">${esc(d.runs_dir)}</span>. Run <span class="mono">uv run ablate check --out runs/demo</span>, then reload.</div>`}
