@@ -1,0 +1,36 @@
+Ablate — Design Simulation (Operating Characteristics)
+======================================================
+Label for slides: design simulation
+Date:             2026-11-20 (IST / UTC+05:30)
+Seed:             7
+Exact command:    .venv\Scripts\ablate.exe simulate --seed 7
+
+Raw command output
+------------------
+Design: n = 24 scenarios, k = 5, δ = 10%, α = 0.05 familywise, B = 10,000, flips = 20,000, 3 units → 9 arms, 1,080 trials
+Constructed fault: +40% violation rate on 12 of 24 scenarios; 300 reps per setting (grid 120).
+                    Operating characteristics (design simulation — constructed fault)
+┌─────────────────────────────────────────────────┬──────────────────────────┬──────────────────────────┐
+│ Metric                                          │        low heterogeneity │       high heterogeneity │
+├─────────────────────────────────────────────────┼──────────────────────────┼──────────────────────────┤
+│ Type I error, reproduction gate (cand = base)   │                    0.023 │                    0.017 │
+│ False naming under the null (any unit named)    │                    0.000 │                    0.003 │
+│ A/A false DRIFT rate                            │                    0.010 │                    0.013 │
+│ Power to reproduce the constructed fault        │                    0.993 │                    0.993 │
+│ Power to CONFIRM the constructed fault          │                    0.710 │                    0.627 │
+│ Decoy named when a constructed fault is present │                    0.017 │                    0.007 │
+│ NI power (reverting the culprit restores base)  │                    0.757 │                    0.673 │
+│ MDE, reproduction (≥ 80% power)                 │                      25% │                      25% │
+│ MDE, CONFIRMED (≥ 80% power)                    │ not reached (NI-limited) │ not reached (NI-limited) │
+│ Affected-scenario floor                         │                        7 │                        7 │
+│ Mean trials per run (fixed design)              │                    1,080 │                    1,080 │
+└─────────────────────────────────────────────────┴──────────────────────────┴──────────────────────────┘
+Affected-scenario floor: with fewer than 7 scenarios moving, CONFIRMED is impossible at Holm α = 0.05/3.
+
+Summary for slides (label: "design simulation")
+-----------------------------------------------
+- Type I error (reproduction gate, cand = base): 0.023 (low heterogeneity) / 0.017 (high heterogeneity)
+- Familywise false naming under the null:        0.000 (low heterogeneity) / 0.003 (high heterogeneity)
+- Power to reproduce (+40 pp on 12/24):          0.993 (low heterogeneity) / 0.993 (high heterogeneity)
+- Power to CONFIRM constructed fault:            0.710 (low heterogeneity) / 0.627 (high heterogeneity)
+- Mean trials per run (fixed design):            1,080 trials (9 arms × 24 scenarios × 5 trials)
