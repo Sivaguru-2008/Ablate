@@ -24,17 +24,18 @@ uv run ablate check --out runs/demo         # scripted agent: no API key needed
 uv run pytest                               # full suite (~3 min)
 ```
 
-Live run on Gemini via ADK (needs `GOOGLE_API_KEY`; configs use `gemini-3.5-flash-lite`):
+Live run on Gemini via ADK (reads `GOOGLE_API_KEY` from `.env` or environment; configs use `gemini-3.5-flash-lite`):
 
 ```bash
-uv run ablate preflight --agent adk --probe
-uv run ablate check --agent adk --rpm 14 --out runs/live     # free tier: 15 req/min, 500 req/day
+uv run ablate preflight --agent adk --probe --budget 15
+uv run ablate check --agent adk --rpm 60 --budget 15 --out runs/live_v2
 ```
 
-Free tier: about 5,900 requests are needed for 1,080 trials, so a free key finishes in about 12
-days. When the daily cap hits, the run stops cleanly (exit 7) and the same command resumes later.
-`preflight.py` has no list price for `gemini-3.5-flash-lite`, so it prices it at the most
-expensive known tier (≈ $42 estimate); add the real price to `PRICES_PER_M` before using `--budget`.
+At the official Standard Paid Tier list price for `gemini-3.5-flash-lite` (`$0.30` input / `$2.50`
+output per 1M tokens in `PRICES_PER_M`), preflight estimates `~6,480` requests and `≈ $6.80` for
+1,080 trials; the completed live run (`runs/live_v2`, `docs/live-result.md`) spent `$4.36` across
+`12,496,579` tokens. On a free-tier key (15 req/min, 500 req/day), the run stops cleanly when the
+daily cap hits (exit 7) and the same command resumes later.
 
 Local model through Ollama (free, no quota; `uv sync --extra local`):
 
@@ -188,12 +189,25 @@ action.yml (GitHub Action stub)  THIRD_PARTY.md  tests/
   at the most expensive known tier. Edit `PRICES_PER_M` if prices change.
 - The default model is `gemini-2.5-flash-lite`; change `model:` in the configs if that id is retired.
 
-## Live findings so far
+## Live findings
 
-- **Gemini (`gemini-3.5-flash-lite`), 12-trial pilot:** with the weakened confirm block the
-  candidate cancelled or returned before the user's "yes" in 4 of 4 cancel/return scenarios;
-  base waited for confirmation in 2 of 3. Both fell for the prompt-injection scenario. The full
-  check is 50 of 1,080 trials in, paused by the free tier's 500-requests/day cap.
+- **Live Gemini (`gemini-3.5-flash-lite`), full 1,080-trial run (`runs/live_v2`, `docs/live-result.md`):**
+  **`BLOCK`** (`REPRODUCED`: candidate violated contracts in **`75.8%`** of trials vs **`12.5%`**
+  on base, paired sign-flip one-sided `p < 0.0001`). Named **`block.confirm`**
+  (`MULTIPLE_CONTRIBUTORS`: `+60.8 pp` alone, `17/24` scenarios worse, Holm `p = 0.0004`; reverting
+  it brought violations down to `15.0%` / `+2.5 pp`, NI upper bound `+23.5 pp` > `δ = 10 pp` at
+  `k = 5`). Both decoys (`block.role`, `gen.temperature`) stayed `INCONCLUSIVE` (zero decoys named).
+  A/A control was clean (`p = 0.3213`, non-vacuous); all `6,918/6,918` logged calls returned
+  `model_version: gemini-3.5-flash-lite` (zero drift); `1,078/1,080` OK (`2` transient
+  `ServerDisconnectedError` INVALIDs, Fisher min `p = 1.0000`); fidelity check `replays recorded
+  runs exactly (1078/1078)`. Actual token cost: **`$4.36`** (`12.22M` input, `0.28M` output +
+  thinking). Generated pytest: `cand` RED (`19 failed, 6 passed`); `base` surfaced 3 baseline
+  scenario failures including prompt injection `5/5` (`4 failed, 21 passed`).
+- **Live preflight `--probe` (`docs/probe-output.txt`):** clean (`exit 0`, zero issues) on
+  `gemini-3.5-flash-lite` for both `base` (`temp=0.0`) and `cand` (`temp=0.3`); on retired
+  `gemini-2.5-flash-lite` the API rejected every arm as `INCOMPATIBLE` before any trial ran.
+- **Live drafter (`ablate draft`, Step 8):** `gemini-3.8-flash` (`runs/demo/drafts/get_order_details.raw.json`)
+  drafted `get_order_details`; fidelity gate accepted it (`replays recorded runs exactly (1064/1064)`).
 - **Local `qwen2.5:7b`, full 1,080 trials (2-turn scenarios):** NEEDS MORE EVIDENCE. Base broke a
   contract in 72.5% of trials, cand in 42.5%. Base mostly cancelled without the required status
   check, and in 5 scenarios it re-confirmed after the user's "yes", which the 2-turn scripted users
@@ -205,7 +219,6 @@ action.yml (GitHub Action stub)  THIRD_PARTY.md  tests/
   scenarios and the gate flags that. On this model the weakened confirm block makes no measurable
   difference. k = 2 departs from the design constants; the report says so.
 - **Local `qwen2.5-coder-tools:7b` (pilot):** ignored the confirm rule in base too, so unusable.
-- **Preflight `--probe`, live:** clean on `gemini-3.5-flash`; on the retired `gemini-2.5-flash-lite` the API rejected every arm and preflight marked the release INCOMPATIBLE before any trial ran.
 - **Gemma 4 31B on the free API:** tool calling works and the limit is 30 requests/minute, but
   the endpoint returned 503 "high demand" for most calls when tried.
 
@@ -221,20 +234,19 @@ vacuous because decoding is deterministic.
   on nulls; it does not establish how often real production regressions are single-unit or how
   closely the simulator mirrors live traffic. Fidelity checks report that the world **replays
   recorded runs exactly (N/N)** — deterministic trace replay, not production equivalence.
-- **Scripted vs live runs:** `--agent scripted` runs a deterministic feature-driven fake agent
-  (1,080 trials in `runs/demo`, 5 sealed envelopes in `runs/envelopes_demo`, and Cloud Run Job
-  `ablate-gate-wnhw8`); scripted outputs are labelled `scripted` and `constructed fault` and say
-  nothing about Gemini.
 - **Live model pair actually used & trials actually run:**
-  - **Live Gemini (`gemini-3.5-flash-lite` base → `gemini-3.5-flash-lite` cand):** 20/20 trials
-    passed in `test_live_flash_lite_20_trials`, a 12-trial pilot ran, and **50/1,080 trials**
-    completed on the earlier 2-turn plan (`94452ca956aa`; 277 cached calls, all returning
-    `model_version: gemini-3.5-flash-lite`) before Free Tier's 500 req/day limit paused the run
-    (exit 7). On the current 3-turn plan (`533dc15fabcb`), **0/1,080 live Gemini trials** have
-    completed yet (awaiting a funded key / quota).
+  - **Live Gemini (`gemini-3.5-flash-lite` base → `gemini-3.5-flash-lite` cand, `docs/live-result.md`):**
+    **1,080/1,080 trials** completed on the frozen 3-turn plan (`e27914156d7a`, `1,078` OK + `2`
+    transient INVALIDs, `6,918/6,918` calls returning `model_version: gemini-3.5-flash-lite`,
+    `$4.36` actual token cost) → **`BLOCK`**, naming `block.confirm` (`MULTIPLE_CONTRIBUTORS`,
+    zero decoys named; A/A `p = 0.3213`).
   - **Local ADK + Ollama (`ollama_chat/qwen2.5:7b` base → `ollama_chat/qwen2.5:7b` cand):**
     **1,080/1,080 trials** (2-turn scenarios, `runs/local`) and **432/432 trials** (`k = 2`,
-    3-turn scenarios, `runs/local_k2`) ran end to end.
+    3-turn scenarios, `runs/local_k2`) ran end to end (`NEEDS MORE EVIDENCE`).
+- **Scripted, constructed fault runs (not live Gemini):** `--agent scripted` runs a deterministic
+  feature-driven fake agent (`1,080` trials in `runs/demo`, `5` sealed envelopes in
+  `runs/envelopes_demo`, and Cloud Run Job `ablate-gate-wnhw8`); every scripted run is labelled
+  **scripted, constructed fault** and says nothing about Gemini.
 - **Related tools (named honestly):**
   - **Shadow** — diagnoses PR regressions and checks proposed fixes, without paired two-sided
     (necessity + sufficiency) per-unit ablation arms or a published false-attribution control.
