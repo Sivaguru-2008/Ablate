@@ -150,8 +150,8 @@ Ablate abstains in those cases; it does not guess.
 | 5 runner, cache, rate limit | kill mid-run, rerun, zero repeated API calls | passes (fake LLM, real ADK stack) |
 | 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
 | 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
-| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | passes live: `gemini-3.5-flash` drafted it and the gate accepted it (1,064/1,064 recorded trials replay exactly); wrong and unsafe drafts are rejected in tests. The gate can only check behaviour the recordings contain (no recorded trial looked up a missing order) |
-| Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | passes: job `ablate-gate` (asia-south1) execution `ablate-gate-x92p9` ran the 1,080-trial scripted gate and wrote BLOCK / `block.confirm` CONFIRMED to `gs://<bucket>/ablate-runs/20261120T111129Z-889d8f9b7d8c/` |
+| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | `runs/demo/drafts/get_order_details.py` exists on disk and replays recorded runs exactly (1,064/1,064), though no raw response or returned `model_version` was saved when it ran; `ablate/drafter.py` now writes `{tool}.raw.json` with raw response + `model_version` on live runs (blocked on `GOOGLE_API_KEY`); wrong and unsafe drafts are rejected in tests |
+| Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | passes: job `ablate-gate` (asia-south1, remote Cloud Build) execution `ablate-gate-wnhw8` ran the 1,080-trial scripted gate and uploaded 6 objects (`BLOCK (scripted)` / `block.confirm` CONFIRMED) to `gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/` (see `docs/cloud-run-proof.txt`) |
 
 ## Layout
 
@@ -223,7 +223,7 @@ vacuous because decoding is deterministic.
   recorded runs exactly (N/N)** — deterministic trace replay, not production equivalence.
 - **Scripted vs live runs:** `--agent scripted` runs a deterministic feature-driven fake agent
   (1,080 trials in `runs/demo`, 5 sealed envelopes in `runs/envelopes_demo`, and Cloud Run Job
-  `ablate-gate-x92p9`); scripted outputs are labelled `scripted` and `constructed fault` and say
+  `ablate-gate-wnhw8`); scripted outputs are labelled `scripted` and `constructed fault` and say
   nothing about Gemini.
 - **Live model pair actually used & trials actually run:**
   - **Live Gemini (`gemini-3.5-flash-lite` base → `gemini-3.5-flash-lite` cand):** 20/20 trials

@@ -1,0 +1,54 @@
+Ablate — Cloud Run Job Execution Record
+=======================================
+Date (UTC):      2026-11-20T11:40:54Z
+GCP Project:     applied-range-496518-v2 (project number 324699159359)
+Account:         sivagurumurugan1@gmail.com
+Billing:         enabled (billingAccounts/010AD4-C607F0-367F34)
+Enabled APIs:    cloudbuild.googleapis.com, run.googleapis.com, storage.googleapis.com, artifactregistry.googleapis.com
+Build method:    Remote Cloud Build (`gcloud run jobs deploy ablate-gate --source .`, no local image build)
+Region:          asia-south1
+Job name:        ablate-gate
+Execution ID:    ablate-gate-wnhw8
+Console URL:     https://console.cloud.google.com/run/jobs/executions/details/asia-south1/ablate-gate-wnhw8?project=324699159359
+Run ID:          20261120T114036Z-889d8f9b7d8c
+Agent mode:      scripted (constructed fault demo — not live Gemini)
+Local C: free:   13.64 GB
+
+Commands executed
+-----------------
+gcloud run jobs deploy ablate-gate --source . --region asia-south1 --set-env-vars "ABLATE_BUCKET=gs://ablate-reports-applied-range-496518-v2,ABLATE_AGENT=scripted" --cpu 2 --memory 2Gi --task-timeout 3600 --max-retries 0 --quiet
+gcloud run jobs execute ablate-gate --region asia-south1 --wait --quiet
+gcloud storage ls -l gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/
+
+Cloud Storage object listing
+----------------------------
+      3022  2026-11-20T11:40:53Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/plan.json
+      1616  2026-11-20T11:40:53Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/pr_comment.md
+       430  2026-11-20T11:40:53Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/preflight.json
+      6019  2026-11-20T11:40:53Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/report.html
+   3262422  2026-11-20T11:40:54Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/results.jsonl
+      2321  2026-11-20T11:40:53Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/verdict.json
+TOTAL: 6 objects, 3275830 bytes (3.12MiB)
+
+Uploaded pr_comment.md
+----------------------
+## ⛔ Ablate release gate: BLOCK (scripted)
+
+Regression reproduced: candidate violates a contract in 57.5% of trials vs 6.7% on base (paired sign-flip, one-sided p < 0.0001).
+- **Scripted demo (constructed fault):** results come from the deterministic scripted agent, not live Gemini.
+
+**Named change(s):** `block.confirm`
+
+| Change | Verdict | Revert it: cand−X vs base (NI bound < δ?) | Add it alone: base+X vs base (Holm p) | Scenarios worse | Next step |
+|---|---|---|---|---|---|
+| `block.confirm` | **CONFIRMED** | yes: -2.5 pp, bound +4.3 pp (one-sided α = 0.0167) | yes: +52.5 pp, p = 0.0001 | 16/24 |  |
+| `block.role` | INCONCLUSIVE | no: +49.2 pp, bound +64.7 pp (one-sided α = 0.0250) | no: -3.3 pp, p = 1.0000 | 2/24 | current n is already powered for an effect of 10%; treat any effect as smaller |
+| `gen.temperature` | INCONCLUSIVE | no: +43.3 pp, bound +56.4 pp (one-sided α = 0.0500) | no: -5.0 pp, p = 1.0000 | 0/24 | current n is already powered for an effect of 10%; treat any effect as smaller |
+
+**Impact:** ≈ ₹34,004,110 per 1,000 conversations in state changes made without their preconditions, under this scenario mix.
+
+**Next step:** Revert the named change(s) and re-run the gate.
+
+<sub>Controls: A/A two-sided p = 0.3996 (clean) · model versions: gemini-3.5-flash-lite → gemini-3.5-flash-lite-scripted-001 · INVALID-rate Fisher min p = 1.0000 · affected-scenario floor = 7</sub>
+
+<sub>Plan `889d8f9b7d8c` · n = 24 scenarios · k = 5 · δ = 10 pp · α = 0.05 familywise (Holm) · 9 arms · 1,080 trials · agent `scripted` · oracle: code contracts, no LLM judge</sub>
