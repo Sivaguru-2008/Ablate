@@ -29,11 +29,13 @@ THINKING_LEVELS = {"minimal", "low", "medium", "high"}
 # was written. They are estimates for the budget cap, not billing; override
 # with --price-in/--price-out. Unknown models are priced at the most
 # expensive known tier so the cap errs on the safe side.
+# Official Gemini API pricing: https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite
 PRICES_PER_M = {
     "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-3-pro-preview": (2.00, 12.00),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
 }
 EST_CALLS_PER_TRIAL = 6
 EST_IN_TOKENS_PER_CALL = 2_500
