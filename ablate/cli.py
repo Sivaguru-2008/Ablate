@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -416,7 +417,28 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def load_dotenv(path: Path | None = None) -> bool:
+    """Load KEY=VALUE pairs from .env into os.environ without overwriting existing vars."""
+    p = Path(path) if path is not None else PROJECT_DIR / ".env"
+    if not p.is_file():
+        return False
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        k, _, v = line.partition("=")
+        k, v = k.strip(), v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            v = v[1:-1]
+        if k:
+            os.environ.setdefault(k, v)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
     if hasattr(sys.stdout, "reconfigure"):
         try:
             sys.stdout.reconfigure(encoding="utf-8")
