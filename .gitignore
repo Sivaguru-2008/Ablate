@@ -18,6 +18,11 @@ tests_generated/
 # Secrets
 .env
 *.key
+*.secret
+
+# Binaries
+ablate.exe
+*.exe
 
 # OS / editor
 .DS_Store

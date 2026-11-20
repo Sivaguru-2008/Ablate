@@ -175,26 +175,42 @@ def run(env_dir: Path, scenarios: Path, *, agent: str = "scripted", budget_usd: 
 # --- reveal ----------------------------------------------------------------------
 
 
-def reveal(env_dir: Path, sealed_dir: Path) -> dict:
-    env_dir, sealed_dir = Path(env_dir), Path(sealed_dir)
+def _load_public(env_dir: Path) -> tuple[dict, dict]:
     meta = json.loads((env_dir / "hashes.json").read_text(encoding="utf-8"))
-    sealed = json.loads((sealed_dir / "labels.json").read_text(encoding="utf-8"))
     idx_path = env_dir / "results" / "index.json"
     index = json.loads(idx_path.read_text(encoding="utf-8")) if idx_path.exists() else {"releases": {}}
-    rows = []
-    for rid, committed in sorted(meta["envelopes"].items()):
-        entry = sealed.get(rid)
-        recomputed = label_hash(entry["label"], entry["salt"]) if entry else None
-        got = index["releases"].get(rid)
-        lab = entry["label"] if entry else {}
-        row = {"release": rid, "committed": committed, "recomputed": recomputed,
-               "hash_ok": recomputed == committed, "kind": lab.get("kind"),
-               "expected_decision": lab.get("expected_decision"), "expected_named": lab.get("expected_named"),
-               "decision": got and got["decision"], "named": got and sorted(got["named"])}
-        row["unit_ok"] = bool(got) and all(got["units"].get(u) == s for u, s in lab.get("expected_units", {}).items())
-        row["correct"] = bool(got) and row["hash_ok"] and got["decision"] == lab.get("expected_decision") \
-            and sorted(got["named"]) == sorted(lab.get("expected_named", []))
-        rows.append(row)
+    return meta, index
+
+
+def _reveal_row(rid: str, committed: str, entry: dict | None, got: dict | None) -> dict:
+    recomputed = label_hash(entry["label"], entry["salt"]) if entry else None
+    lab = entry["label"] if entry else {}
+    row = {"release": rid, "committed": committed, "recomputed": recomputed,
+           "hash_ok": recomputed == committed, "kind": lab.get("kind"),
+           "expected_decision": lab.get("expected_decision"), "expected_named": lab.get("expected_named"),
+           "decision": got and got["decision"], "named": got and sorted(got["named"])}
+    row["unit_ok"] = bool(got) and all(got["units"].get(u) == s for u, s in lab.get("expected_units", {}).items())
+    row["correct"] = bool(got) and row["hash_ok"] and got["decision"] == lab.get("expected_decision") \
+        and sorted(got["named"]) == sorted(lab.get("expected_named", []))
+    return row
+
+
+def reveal_one(env_dir: Path, sealed_dir: Path, rid: str) -> dict:
+    """Open a single envelope: recompute its hash against hashes.json and score it. Writes nothing."""
+    env_dir, sealed_dir = Path(env_dir), Path(sealed_dir)
+    meta, index = _load_public(env_dir)
+    if rid not in meta["envelopes"]:
+        raise KeyError(rid)
+    sealed = json.loads((sealed_dir / "labels.json").read_text(encoding="utf-8"))
+    return _reveal_row(rid, meta["envelopes"][rid], sealed.get(rid), index["releases"].get(rid))
+
+
+def reveal(env_dir: Path, sealed_dir: Path) -> dict:
+    env_dir, sealed_dir = Path(env_dir), Path(sealed_dir)
+    meta, index = _load_public(env_dir)
+    sealed = json.loads((sealed_dir / "labels.json").read_text(encoding="utf-8"))
+    rows = [_reveal_row(rid, committed, sealed.get(rid), index["releases"].get(rid))
+            for rid, committed in sorted(meta["envelopes"].items())]
     sealed_at, run_at = meta.get("sealed_at"), index.get("run_at")
     out = {"rows": rows, "hashes_ok": all(r["hash_ok"] for r in rows) and len(sealed) == len(rows),
            "correct": sum(r["correct"] for r in rows), "total": len(rows),

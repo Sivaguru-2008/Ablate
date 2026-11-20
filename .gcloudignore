@@ -1,0 +1,14 @@
+# Files not uploaded by `gcloud run jobs deploy --source .` (same list as .dockerignore).
+.gcloudignore
+.dockerignore
+.venv/
+.git/
+runs/
+.ablate_cache/
+.sealed/
+envelopes/
+tests_generated/
+__pycache__/
+*.pyc
+*.pdf
+.env

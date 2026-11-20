@@ -1,4 +1,4 @@
-"""Command line: ablate simulate | preflight | check | report | pytest-gen | fidelity | draft | envelopes."""
+"""Command line: ablate simulate | preflight | check | report | pytest-gen | fidelity | draft | envelopes | console."""
 
 from __future__ import annotations
 
@@ -286,6 +286,27 @@ def cmd_envelopes(a) -> int:
 
 
 # ---------------------------------------------------------------------------
+# console
+
+
+def cmd_console(a) -> int:
+    from .console.server import Console, make_server
+    srv = make_server(Console(Path(a.dir), Path(a.sealed_dir), Path(a.runs)), port=a.port)
+    url = f"http://127.0.0.1:{srv.server_address[1]}/"
+    say(f"Ablate console on [bold]{url}[/bold] (envelopes {a.dir}, runs {a.runs}). Ctrl+C stops it.")
+    if a.open:
+        import webbrowser
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
+    return 0
+
+
+# ---------------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -358,6 +379,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--concurrency", type=int, default=4)
     s.add_argument("--rpm", type=int, default=None)
     s.set_defaults(fn=cmd_envelopes)
+
+    s = sub.add_parser("console", help="local web console: releases and the sealed-envelope assurance page")
+    s.add_argument("--dir", default=str(PROJECT_DIR / "envelopes"), help="envelope directory (hashes.json)")
+    s.add_argument("--sealed-dir", default=str(PROJECT_DIR / ".sealed"))
+    s.add_argument("--runs", default=str(PROJECT_DIR / "runs"), help="directory of `ablate check` outputs")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--open", action="store_true", help="open the console in the default browser")
+    s.set_defaults(fn=cmd_console)
     return p
 
 

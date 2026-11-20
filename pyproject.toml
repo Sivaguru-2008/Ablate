@@ -20,6 +20,8 @@ dependencies = [
 [project.optional-dependencies]
 # Local models through Ollama (ADK LiteLlm wrapper): `uv sync --extra local`
 local = ["litellm>=1.50"]
+# Cloud Run Job that uploads the report to Cloud Storage: `uv sync --extra cloud`
+cloud = ["google-cloud-storage>=2.10"]
 
 [project.scripts]
 ablate = "ablate.cli:main"

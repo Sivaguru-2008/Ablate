@@ -57,10 +57,44 @@ uv run ablate envelopes run                 # blind: never reads .sealed/
 uv run ablate envelopes reveal              # recomputes every hash, scores the verdicts
 ```
 
+Web console (Releases + Assurance / Trust center), served on localhost only:
+
+```bash
+uv run ablate console --open                # envelopes/ + .sealed/ + runs/ by default
+uv run ablate console --dir runs/envelopes_demo --sealed-dir runs/.sealed_demo
+```
+
+**Releases** lists every finished `ablate check` under `runs/` with its decision, named change,
+violation rates and links to `report.html` / `pr_comment.md`. **Assurance** shows the sealed
+envelopes: commitments from `hashes.json`, the blind verdicts, and a **Reveal** button per envelope
+that recomputes that envelope's hash against the commitment and scores it (nothing is written);
+**Reveal all** runs `ablate envelopes reveal` and writes `reveal.json`. The false-attribution bound
+is a one-sided 95% Clopper-Pearson upper bound over the opened envelopes.
+
 Other commands: `ablate report --run DIR`, `ablate pytest-gen --run DIR --arm cand --arm base`,
 `ablate fidelity --run DIR`, `ablate draft --run DIR --tool get_order_details` (live, Should tier).
 
 Exit codes for `check`: 0 APPROVE, 1 BLOCK, 3 NEEDS MORE EVIDENCE, 4 over budget.
+
+### Cloud Run Job (stretch)
+
+`python -m ablate.cloud_job` runs the gate once and uploads `pr_comment.md`, `report.html`,
+`verdict.json`, `plan.json`, `preflight.json` and `results.jsonl` to
+`gs://BUCKET/ablate-runs/<UTC time>-<plan hash>/`, plus `ablate-runs/LATEST` naming that run.
+It is configured with `ABLATE_*` environment variables (see `ablate/cloud_job.py`) and exits 0
+whatever the decision, so Cloud Run never retries a finished gate.
+
+```bash
+gcloud auth login
+PROJECT=my-project BUCKET=my-ablate-reports bash deploy/cloud_run_job.sh
+```
+
+The script enables the APIs, creates the bucket, grants the job's service account write access,
+builds the image remotely with Cloud Build (`--source .`, no local Docker), deploys the job,
+executes it once and prints the uploaded PR comment. The project needs a billing account for
+Cloud Run and Cloud Build; one scripted run fits in their free tiers. For a live Gemini run, store
+the key in Secret Manager and add `AGENT=adk SECRET=<secret-name>`. Locally, point
+`ABLATE_BUCKET` at a `file:///` URL to try the job without Cloud Storage.
 
 ## Design constants (all in the plan hash)
 
@@ -117,7 +151,7 @@ Ablate abstains in those cases; it does not guess.
 | 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
 | 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
 | 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | passes live: `gemini-3.5-flash` drafted it and the gate accepted it (1,064/1,064 recorded trials replay exactly); wrong and unsafe drafts are rejected in tests. The gate can only check behaviour the recordings contain (no recorded trial looked up a missing order) |
-| Stretch: Cloud Run Job | | not built |
+| Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | job, Dockerfile and deploy script built; tested locally against a `file://` destination. Not yet deployed (needs `gcloud auth login` and a billing-enabled project) |
 
 ## Layout
 

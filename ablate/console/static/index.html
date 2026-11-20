@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ablate · Trust center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFFFFF; --fg:#111318; --muted:#6B7280; --soft:#374151; --line:#E5E7EB; --line2:#F0F0EE;
+  --card:#FFFFFF; --code:#F7F7F5; --accent:#1D4ED8; --accent-strong:#1E3A8A; --sel:#EEF3FF;
+  --ok:#14532D; --ok-line:#1E7A4C; --ok-bg:#ECFDF3; --bad:#B42318; --bad-bg:#FEF3F2; --warn:#8A5A00; --warn-bg:#FFF8E6;
+  --btn-line:#D1D5DB;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1115; --fg:#ECEDEF; --muted:#9CA3AF; --soft:#C9CDD3; --line:#262A31; --line2:#1D2026;
+    --card:#151821; --code:#1B1F27; --accent:#7AA2FF; --accent-strong:#A9C1FF; --sel:#18213A;
+    --ok:#6EE7A0; --ok-line:#2F9E66; --ok-bg:#10261B; --bad:#FF8A80; --bad-bg:#2A1517; --warn:#F2C35B; --warn-bg:#2A2110;
+    --btn-line:#343A44;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1115; --fg:#ECEDEF; --muted:#9CA3AF; --soft:#C9CDD3; --line:#262A31; --line2:#1D2026;
+  --card:#151821; --code:#1B1F27; --accent:#7AA2FF; --accent-strong:#A9C1FF; --sel:#18213A;
+  --ok:#6EE7A0; --ok-line:#2F9E66; --ok-bg:#10261B; --bad:#FF8A80; --bad-bg:#2A1517; --warn:#F2C35B; --warn-bg:#2A2110;
+  --btn-line:#343A44;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+a{color:var(--accent)} a:hover{color:var(--accent-strong)}
+.mono{font-family:var(--mono)}
+nav.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:10px 48px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:14px}
+.brand b{font-size:20px}
+.chip{font-size:13px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.links{display:flex;flex-wrap:wrap;gap:24px}
+.links a{color:var(--soft);text-decoration:none;font-size:15px;min-height:44px;display:inline-flex;align-items:center;border-bottom:2px solid transparent}
+.links a[aria-current="page"]{color:var(--fg);font-weight:600;border-bottom-color:var(--accent)}
+.where{font-size:12px;color:var(--muted)} .where span{font-family:var(--mono);color:var(--fg)}
+main{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:32px 48px 48px;display:flex;flex-direction:column;gap:20px}
+h1{margin:0;font-size:26px}
+.sub{font-size:14px;color:var(--muted);max-width:760px;line-height:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.stat .k{font-size:13px;color:var(--muted)} .stat .v{display:block;font-size:28px;font-weight:700;margin-top:2px}
+.stat .d{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.tablewrap{overflow:auto;min-width:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+.row{display:grid;grid-template-columns:0.5fr 1.5fr 0.8fr 1.6fr 0.9fr 0.8fr;min-width:820px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line2);font-size:14px;gap:8px}
+.row.head{font-size:12px;color:var(--muted);font-weight:600;border-bottom-color:var(--line)}
+.row.sel{background:var(--sel)}
+.rel .row{grid-template-columns:1.1fr 1.2fr 1.3fr 1fr 1.1fr 1.3fr}
+.muted{color:var(--muted)}
+button{font:inherit;font-size:13px;padding:8px 12px;min-height:36px;border:1px solid var(--btn-line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.55;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.dec{display:inline-block;font-weight:600;font-size:13px;padding:2px 8px;border-radius:6px}
+.dec.BLOCK{color:var(--bad);background:var(--bad-bg)} .dec.APPROVE{color:var(--ok);background:var(--ok-bg)} .dec.NEEDS{color:var(--warn);background:var(--warn-bg)}
+.units{font-family:var(--mono);font-size:12px;color:var(--soft)}
+.match{color:var(--ok);font-weight:600} .mismatch{color:var(--bad);font-weight:600}
+.panel{padding:18px;display:flex;flex-direction:column;gap:12px;align-self:start}
+.panel.ok{border:2px solid var(--ok-line)} .panel.badp{border:2px solid var(--bad)}
+.eyebrow{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--muted)}
+.panel.ok .eyebrow{color:var(--ok)} .panel.badp .eyebrow{color:var(--bad)}
+.hashes{font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--code);border-radius:8px;padding:10px 12px;word-break:break-all;color:var(--soft)}
+.note{font-size:13px;color:var(--muted);line-height:1.5}
+.empty{padding:28px 18px;color:var(--muted);font-size:14px;line-height:1.6}
+pre.cmd{font-family:var(--mono);font-size:12px;background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;color:var(--fg)}
+.err{color:var(--bad);font-size:13px}
+footer{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding:20px 48px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+footer strong{color:var(--fg)}
+@media (max-width:860px){
+  nav.top,footer{padding-left:16px;padding-right:16px}
+  main{padding:20px 16px 32px}
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .links{gap:16px}
+}
+</style>
+</head>
+<body>
+<nav class="top" aria-label="Main">
+  <div class="brand"><b>Ablate</b><span class="chip">Retail world · local</span></div>
+  <div class="links">
+    <a href="#/releases" data-view="releases">Releases</a>
+    <a href="#/assurance" data-view="assurance">Assurance</a>
+  </div>
+  <span class="where" id="where"></span>
+</nav>
+<main id="app" aria-live="polite"></main>
+<footer>
+  <span><strong>Ablate console</strong> · ADK + Gemini agents · verdicts and statistics computed locally, no LLM in the verdict path</span>
+  <span>Served from 127.0.0.1</span>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  const app = document.getElementById("app");
+  const where = document.getElementById("where");
+  const state = { selected: null, busy: false, error: "" };
+
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const pct = x => x == null ? "—" : (x * 100).toFixed(1) + "%";
+  const when = iso => { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(); };
+  const dec = d => d ? `<span class="dec ${esc(d.split(" ")[0])}">${esc(d)}</span>` : `<span class="muted">Not run</span>`;
+  const named = list => list && list.length ? `<span class="units">${list.map(esc).join(", ")}</span>` : `<span class="muted">none named</span>`;
+  const KIND = { culprit: "Single culprit", null: "No regression", multiple: "Two contributors", interaction: "Interaction" };
+
+  async function api(path, opts) {
+    const r = await fetch(path, opts);
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    return body;
+  }
+  const post = path => api(path, { method: "POST", headers: { "X-Ablate": "1" } });
+
+  // ---------------------------------------------------------------- assurance
+  function trueAnswer(r) {
+    if (!r.revealed) return `<span class="muted">Sealed</span>`;
+    return `${esc(KIND[r.kind] || r.kind)}<br>${named(r.expected_named)}`;
+  }
+  function fingerprint(r) {
+    if (!r.revealed) return `<span class="muted">Sealed</span>`;
+    if (!r.hash_ok) return `<span class="mismatch">Hash mismatch ✗</span>`;
+    return r.correct ? `<span class="match">Match ✓</span>` : `<span class="mismatch">Wrong verdict ✗</span>`;
+  }
+
+  function panel(a) {
+    const r = a.rows.find(x => x.release === state.selected);
+    if (!r) {
+      return `<section class="card panel" aria-label="Envelope detail">
+        <span class="eyebrow">${a.rows.length} ENVELOPES · SEALED ${esc(when(a.sealed_at))}</span>
+        <span style="font-size:15px">Open an envelope to compare Ablate's blind verdict with the label committed before the run.</span>
+        <div class="hashes">algorithm ${esc(a.algorithm || "")}</div>
+        <span class="note">Each row's fingerprint is SHA-256 of the canonical label plus a random salt. The labels and salts stay in the sealed directory; the blind run never reads it.</span>
+        <a href="/files/envelopes/hashes.json" target="_blank" rel="noopener">Open hashes.json</a>
+      </section>`;
+    }
+    const ok = r.revealed && r.hash_ok;
+    const cls = !r.revealed ? "" : ok ? "ok" : "badp";
+    const head = !r.revealed ? "SEALED" : ok ? "VERIFIED" : "HASH MISMATCH";
+    const verdict = r.ran ? `${esc(r.decision)}${r.named.length ? " · " + r.named.map(esc).join(", ") : ""}` : "not run";
+    const truth = r.revealed ? `${esc(r.expected_decision)}${r.expected_named.length ? " · " + r.expected_named.map(esc).join(", ") : ""}` : "sealed";
+    return `<section class="card panel ${cls}" aria-label="Envelope ${esc(r.release)} detail">
+      <span class="eyebrow">ENVELOPE ${esc(r.release)} · ${head}</span>
+      <span style="font-size:15px">Blind verdict: <strong>${verdict}</strong></span>
+      <span style="font-size:15px">True answer: <strong>${truth}</strong>${r.revealed ? ` <span class="muted">(${esc(KIND[r.kind] || r.kind)})</span>` : ""}</span>
+      <div class="hashes">locked&nbsp;&nbsp;${esc(r.committed)}<br>rebuilt ${r.revealed ? esc(r.recomputed || "—") + (r.hash_ok ? " ✓" : " ✗") : "—"}</div>
+      <span class="note">Commitment written to hashes.json at ${esc(when(a.sealed_at))}; the blind run started ${esc(when(a.run_at))}${a.ordered ? " (after sealing ✓)" : " (order not verified)"}. Agent: ${esc(a.agent || "—")}.</span>
+      ${r.units && Object.keys(r.units).length ? `<div class="units">${Object.entries(r.units).map(([u,s]) => `${esc(u)}: ${esc(s)}`).join("<br>")}</div>` : ""}
+      <span style="display:flex;gap:16px;flex-wrap:wrap">
+        ${r.report ? `<a href="/files/envelopes/${esc(r.release)}/report.html" target="_blank" rel="noopener">Blind-run report</a>` : ""}
+        <a href="/files/envelopes/hashes.json" target="_blank" rel="noopener">Open hashes.json</a>
+      </span>
+    </section>`;
+  }
+
+  function renderAssurance(a) {
+    document.title = "Ablate · Trust center";
+    if (!a.available) {
+      where.innerHTML = "";
+      app.innerHTML = `<h1>Assurance</h1>
+        <div class="card empty">No sealed envelopes in <span class="mono">${esc(a.env_dir)}</span>. Seal and run a benchmark, then reload:
+        <pre class="cmd">uv run ablate envelopes seal --count 5
+uv run ablate envelopes run</pre>
+        Or start the console with <span class="mono">--dir</span> and <span class="mono">--sealed-dir</span> pointing at an existing set.</div>`;
+      return;
+    }
+    where.innerHTML = `Envelopes <span>${esc(a.env_dir.split(/[\\/]/).slice(-2).join("/"))}</span>`;
+    const s = a.score, n = a.rows.length;
+    const ran = a.rows.filter(r => r.ran).length;
+    const sealedLeft = a.rows.filter(r => !r.revealed).length;
+    const ub = s.false_attribution_upper;
+    app.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h1>Assurance</h1>
+        <span class="sub">Attribution accuracy on a pre-registered benchmark of ${n} sealed releases. Ground truth is committed to hashes.json before execution; Ablate runs blind and each envelope is opened here by recomputing its hash.</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="k">Correct attribution</span><span class="v">${s.correct_attribution}<span class="d"> / ${s.attribution_cases}</span></span><span class="d">culprit cases opened</span></div>
+        <div class="stat"><span class="k">Correct abstention</span><span class="v">${s.correct_abstention}<span class="d"> / ${s.abstention_cases}</span></span><span class="d">no-culprit cases opened</span></div>
+        <div class="stat"><span class="k">False attribution</span><span class="v" style="color:var(--bad)">${s.false_attribution}</span><span class="d">named a unit that was not planted</span></div>
+        <div class="stat"><span class="k">False-attribution bound</span><span class="v">${ub == null ? "—" : "≤ " + pct(ub)}</span><span class="d">95% one-sided, ${s.scored} of ${n} opened</span></div>
+      </div>
+      ${state.error ? `<div class="err" role="alert">${esc(state.error)}</div>` : ""}
+      <div class="grid">
+        <section class="card tablewrap" aria-label="Sealed releases">
+          <div class="toolbar">
+            <span>${ran} of ${n} run blind · ${sealedLeft} still sealed${a.labels_present ? "" : " · sealed labels not found"}</span>
+            <button type="button" class="primary" id="revealAll" ${state.busy || !a.labels_present || a.fully_revealed ? "disabled" : ""}>${a.fully_revealed ? "All revealed" : "Reveal all"}</button>
+          </div>
+          <div role="table" aria-label="Sealed releases">
+            <div role="row" class="row head"><span role="columnheader">#</span><span role="columnheader">True answer</span><span role="columnheader">Agent</span><span role="columnheader">Blind verdict</span><span role="columnheader">Fingerprint</span><span role="columnheader"><span class="sr" style="position:absolute;left:-9999px">Action</span></span></div>
+            ${a.rows.map(r => `
+            <div role="row" class="row ${r.release === state.selected ? "sel" : ""}">
+              <span role="cell" style="font-weight:600">${esc(r.release)}</span>
+              <span role="cell">${trueAnswer(r)}</span>
+              <span role="cell" class="muted">${esc(a.agent || "—")}</span>
+              <span role="cell">${dec(r.decision)}<br>${r.ran ? named(r.named) : ""}</span>
+              <span role="cell">${fingerprint(r)}</span>
+              <span role="cell">${r.revealed
+                ? `<button type="button" data-show="${esc(r.release)}">Details</button>`
+                : `<button type="button" data-reveal="${esc(r.release)}" ${state.busy || !a.labels_present ? "disabled" : ""}>Reveal</button>`}</span>
+            </div>`).join("")}
+          </div>
+        </section>
+        ${panel(a)}
+      </div>`;
+    app.querySelectorAll("[data-reveal]").forEach(b => b.addEventListener("click", () => act(() => post(`/api/envelopes/${encodeURIComponent(b.dataset.reveal)}/reveal`), b.dataset.reveal)));
+    app.querySelectorAll("[data-show]").forEach(b => b.addEventListener("click", () => { state.selected = b.dataset.show; renderAssurance(a); }));
+    const all = document.getElementById("revealAll");
+    if (all) all.addEventListener("click", () => {
+      if (confirm("Open every envelope and write reveal.json? Sealed labels become visible.")) act(() => post("/api/envelopes/reveal-all"), state.selected);
+    });
+  }
+
+  async function act(fn, select) {
+    state.busy = true; state.error = "";
+    try { await fn(); state.selected = select || state.selected; }
+    catch (e) { state.error = "Could not open envelope: " + e.message; }
+    state.busy = false;
+    route();
+  }
+
+  // ---------------------------------------------------------------- releases
+  function renderReleases(d) {
+    document.title = "Ablate · Releases";
+    where.innerHTML = `Runs <span>${esc(d.runs_dir.split(/[\\/]/).slice(-2).join("/"))}</span>`;
+    const rows = d.releases;
+    app.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h1>Releases</h1>
+        <span class="sub">Finished release-gate runs (<span class="mono">ablate check</span>). Each row is one base → candidate comparison; open the report for per-unit statistics.</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="k">Runs</span><span class="v">${rows.length}</span></div>
+        <div class="stat"><span class="k">Blocked</span><span class="v" style="color:var(--bad)">${rows.filter(r => r.decision === "BLOCK").length}</span></div>
+        <div class="stat"><span class="k">Approved</span><span class="v">${rows.filter(r => r.decision === "APPROVE").length}</span></div>
+        <div class="stat"><span class="k">Needs more evidence</span><span class="v">${rows.filter(r => (r.decision || "").startsWith("NEEDS")).length}</span></div>
+      </div>
+      <section class="card tablewrap rel" aria-label="Release runs">
+        ${rows.length ? `<div role="table" aria-label="Release runs">
+          <div role="row" class="row head"><span role="columnheader">Run</span><span role="columnheader">Decision</span><span role="columnheader">Named change</span><span role="columnheader">Violation rate base → cand</span><span role="columnheader">Agent · design</span><span role="columnheader">Files</span></div>
+          ${rows.map(r => `<div role="row" class="row">
+            <span role="cell"><strong>${esc(r.name)}</strong><br><span class="muted" style="font-size:12px">${esc(when(r.updated))}</span></span>
+            <span role="cell">${dec(r.decision)}<br><span class="muted" style="font-size:12px">${esc(r.status)}</span></span>
+            <span role="cell">${named(r.named)}</span>
+            <span role="cell">${pct(r.base_rate)} → <strong>${pct(r.cand_rate)}</strong></span>
+            <span role="cell"><span class="muted">${esc(r.agent || "—")}</span><br><span class="units">${esc(r.model || "")}${r.k ? ` · n=${r.n} k=${r.k}` : ""}</span></span>
+            <span role="cell" style="display:flex;gap:10px;flex-wrap:wrap">${r.files.map(f => `<a href="/files/runs/${encodeURIComponent(r.name)}/${esc(f)}" target="_blank" rel="noopener">${esc(f)}</a>`).join("")}</span>
+          </div>`).join("")}
+        </div>` : `<div class="empty">No finished runs in <span class="mono">${esc(d.runs_dir)}</span>. Run <span class="mono">uv run ablate check --out runs/demo</span>, then reload.</div>`}
+      </section>`;
+  }
+
+  // ---------------------------------------------------------------- router
+  async function route() {
+    const view = (location.hash.replace(/^#\//, "") || "assurance").split("/")[0];
+    document.querySelectorAll(".links a").forEach(a => { if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    try {
+      if (view === "releases") renderReleases(await api("/api/releases"));
+      else renderAssurance(await api("/api/assurance"));
+    } catch (e) {
+      app.innerHTML = `<div class="card empty err" role="alert">Console API error: ${esc(e.message)}</div>`;
+    }
+  }
+  window.addEventListener("hashchange", route);
+  route();
+})();
+</script>
+</body>
+</html>
