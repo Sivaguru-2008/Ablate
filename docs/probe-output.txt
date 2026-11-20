@@ -1,0 +1,43 @@
+Ablate — Live Preflight Probe Output (gemini-3.5-flash-lite)
+============================================================
+Date (UTC):         2026-11-20T12:17:08Z
+Endpoint mode:      Vertex AI Express (GOOGLE_GENAI_USE_VERTEXAI=true, billed project applied-range-496518-v2)
+Pinned model id:    gemini-3.5-flash-lite
+
+Cached probe metadata (`.ablate_cache/calls/`)
+----------------------------------------------
+- base (temperature=0.0): key 7b9c251af491 · issues=[] · returned model_version='gemini-3.5-flash-lite'
+- cand (temperature=0.3): key 5656107b7b64 · issues=[] · returned model_version='gemini-3.5-flash-lite'
+
+1. base vs base
+---------------
+Command: .venv\Scripts\ablate.exe preflight --base configs/base.yaml --cand configs/base.yaml --agent adk --probe --no-mde
+Exit code: 0
+
+      Changed units
+┌──────┬────────┬────────┐
+│ Unit │ Status │ Reason │
+├──────┼────────┼────────┤
+└──────┴────────┴────────┘
+3 arms × 24 scenarios × 5 trials = 360 trials; ~2,160 model requests; cost ≈ $13.91
+warning Affected-scenario floor: CONFIRMED needs at least 5 of 24 scenarios to get worse when a unit is added
+to base (Holm alpha = 0.05/1). A change that can move fewer scenarios cannot be CONFIRMED.
+Plan hash 172ae1d3d0785b147362d97dc46d65f67fede7a67e890ae557a56a2ee1833d3e
+
+2. base vs cand
+---------------
+Command: .venv\Scripts\ablate.exe preflight --base configs/base.yaml --cand configs/cand.yaml --agent adk --probe --no-mde
+Exit code: 0
+
+              Changed units
+┌─────────────────┬────────────┬────────┐
+│ Unit            │ Status     │ Reason │
+├─────────────────┼────────────┼────────┤
+│ block.confirm   │ REVERTIBLE │        │
+│ block.role      │ REVERTIBLE │        │
+│ gen.temperature │ REVERTIBLE │        │
+└─────────────────┴────────────┴────────┘
+9 arms × 24 scenarios × 5 trials = 1,080 trials; ~6,480 model requests; cost ≈ $41.73
+warning Affected-scenario floor: CONFIRMED needs at least 7 of 24 scenarios to get worse when a unit is added
+to base (Holm alpha = 0.05/3). A change that can move fewer scenarios cannot be CONFIRMED.
+Plan hash 533dc15fabcb8b283c5f1131d5cd0842523357c69ddc5551187b9e63a227df58

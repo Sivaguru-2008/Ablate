@@ -150,7 +150,7 @@ Ablate abstains in those cases; it does not guess.
 | 5 runner, cache, rate limit | kill mid-run, rerun, zero repeated API calls | passes (fake LLM, real ADK stack) |
 | 6 fidelity + impact + reports | PR comment BLOCK with ₹ per 1,000; pytest red on cand, green on base | passes |
 | 7 envelopes run/reveal | reveal recomputes every hash and matches hashes.json | passes (5/5 correct in a scripted run) |
-| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | `runs/demo/drafts/get_order_details.py` exists on disk and replays recorded runs exactly (1,064/1,064), though no raw response or returned `model_version` was saved when it ran; `ablate/drafter.py` now writes `{tool}.raw.json` with raw response + `model_version` on live runs (blocked on `GOOGLE_API_KEY`); wrong and unsafe drafts are rejected in tests |
+| 8 drafter (Should) | Gemini drafts `get_order_details`; fidelity gate accepts/rejects | passes live: `gemini-3.8-flash` (`runs/demo/drafts/get_order_details.raw.json`, returned `model_version: gemini-3.8-flash`, `response_id: SzoAa8_AMIGh7PkPrMz1yQ4`) drafted `get_order_details` and the fidelity gate accepted it (replays recorded runs exactly (1,064/1,064)); wrong and unsafe drafts are rejected in tests |
 | Stretch: Cloud Run Job | one execution writes the report to Cloud Storage | passes: job `ablate-gate` (asia-south1, remote Cloud Build) execution `ablate-gate-wnhw8` ran the 1,080-trial scripted gate and uploaded 6 objects (`BLOCK (scripted)` / `block.confirm` CONFIRMED) to `gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T114036Z-889d8f9b7d8c/` (see `docs/cloud-run-proof.txt`) |
 
 ## Layout
