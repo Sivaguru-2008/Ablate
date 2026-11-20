@@ -212,3 +212,32 @@ def test_local_model_server_errors_are_retryable():
     except RuntimeError as e:
         c = classify_error(e)
     assert c.retryable and type(c).__name__ == "AgentInfraError"
+
+
+def test_model_version_log_and_drift_stop(root, tmp_path, fake_key):
+    import json
+    from ablate.agents.adk_agent import AdkAgent
+    from ablate.agents.base import ModelVersionDrift
+    from ablate.agents.recorder_plugin import RecorderPlugin
+    from ablate.world.retail.tools import RetailWorld
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+
+    plan, configs, scen = setup(root, ("fake-careful", "fake-hasty"))
+    cache = DiskCache(tmp_path / "cache")
+    vlog = tmp_path / "model_versions.jsonl"
+    ag = AdkAgent(cache=cache, limiter=RateLimiter(None), version_log=vlog)
+    r = asyncio.run(run_one(plan, configs["base"], scen["s01_cancel_email"], "base", 0, ag, cache))
+    assert r.status == "OK" and vlog.exists()
+    rows = [json.loads(line) for line in vlog.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) >= 3 and all(row["model_version"] == "fake-001" for row in rows)
+
+    # Pinned-id mismatch immediately raises ModelVersionDrift
+    p = RecorderPlugin(world=RetailWorld(0), cache=cache, trial_key="k", limiter=RateLimiter(None),
+                       toolset=set(), model_requested="gemini-3.5-flash-lite",
+                       pinned_model="gemini-3.5-flash-lite", version_log=vlog)
+    p._pending = "dummy"
+    drifted = LlmResponse(content=types.Content(role="model", parts=[types.Part(text="hi")]),
+                          model_version="gemini-3.5-flash-lite-2026-99")
+    with pytest.raises(ModelVersionDrift, match="DRIFT"):
+        asyncio.run(p.after_model_callback(callback_context=None, llm_response=drifted))

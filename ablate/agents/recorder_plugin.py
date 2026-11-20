@@ -19,12 +19,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
 
-from .base import MissingCredentials
+from .base import MissingCredentials, ModelVersionDrift
 
 OUTCOME_TOOL = "submit_outcome"
 
@@ -53,7 +55,8 @@ def have_credentials() -> bool:
 
 
 class RecorderPlugin(BasePlugin):
-    def __init__(self, *, world, cache, trial_key: str, limiter, toolset: set[str], needs_key: bool = True) -> None:
+    def __init__(self, *, world, cache, trial_key: str, limiter, toolset: set[str], needs_key: bool = True,
+                 model_requested: str = "", pinned_model: str | None = None, version_log: Path | None = None) -> None:
         super().__init__(name="ablate_recorder")
         self.world = world
         self.cache = cache
@@ -61,6 +64,9 @@ class RecorderPlugin(BasePlugin):
         self.limiter = limiter
         self.toolset = set(toolset)
         self.needs_key = needs_key
+        self.model_requested = model_requested
+        self.pinned_model = pinned_model
+        self.version_log = version_log
         self.turn = 0
         self.call_index = 0
         self.api_calls = 0
@@ -81,6 +87,7 @@ class RecorderPlugin(BasePlugin):
                 self.versions.append(resp.model_version)
             self._pending = None
             self._log(resp, cached=True)
+            self._check_pin(resp.model_version)
             return resp
         if self.needs_key and not have_credentials():
             raise MissingCredentials("no GOOGLE_API_KEY / GEMINI_API_KEY set and this model call is not cached")
@@ -95,6 +102,9 @@ class RecorderPlugin(BasePlugin):
             if llm_response.model_version:
                 self.versions.append(llm_response.model_version)
             self._log(llm_response, cached=False)
+            self._pending = None
+            self._check_pin(llm_response.model_version)
+            return None
         self._pending = None
         return None
 
@@ -109,9 +119,28 @@ class RecorderPlugin(BasePlugin):
             return self.world.call(name, dict(tool_args), turn=self.turn)
         return self.world.block(name, dict(tool_args), turn=self.turn)
 
+    def _check_pin(self, returned: str | None) -> None:
+        if self.pinned_model and returned and returned != self.pinned_model:
+            raise ModelVersionDrift(
+                f"DRIFT: returned model version {returned!r} differs from pinned id {self.pinned_model!r}"
+            )
+
     def _log(self, resp: LlmResponse, *, cached: bool) -> None:
         parts = (resp.content.parts if resp.content and resp.content.parts else [])
         text = " ".join(p.text for p in parts if getattr(p, "text", None))
         calls = [p.function_call.name for p in parts if getattr(p, "function_call", None)]
         self.transcript.append({"turn": self.turn, "text": text[:2000], "calls": calls, "cached": cached,
                                 "model_version": resp.model_version})
+        if self.version_log is not None:
+            self.version_log.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "trial_key": self.trial_key[:12],
+                "call_index": self.call_index,
+                "turn": self.turn,
+                "cached": cached,
+                "model_requested": self.model_requested,
+                "model_version": resp.model_version,
+            }
+            with self.version_log.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, sort_keys=True) + "\n")

@@ -33,6 +33,10 @@ class MissingCredentials(RuntimeError):
     """A model call is needed and not cached, and no API key is configured."""
 
 
+class ModelVersionDrift(RuntimeError):
+    """Returned model_version differed from the pinned model id mid-run (DRIFT)."""
+
+
 @dataclass
 class AgentRun:
     structured_output: dict | None

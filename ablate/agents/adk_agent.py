@@ -24,7 +24,7 @@ from google.genai import types
 from ..differ import render_instruction
 from ..preflight import Issue
 from ..world.retail.tools import TOOL_SPECS
-from .base import HARNESS_INSTRUCTION, AgentInfraError, AgentRun, MissingCredentials, QuotaExhausted
+from .base import HARNESS_INSTRUCTION, AgentInfraError, AgentRun, MissingCredentials, ModelVersionDrift, QuotaExhausted
 from .recorder_plugin import OUTCOME_TOOL, RecorderPlugin, have_credentials, request_digest
 
 _TYPES = {"str": str, "list[str]": list[str]}
@@ -120,6 +120,9 @@ def _find(e: BaseException, kind, test=None):
 
 def classify_error(e: BaseException) -> BaseException:
     """Map a live-stack failure to what the scheduler should do with it."""
+    drift = _find(e, ModelVersionDrift)
+    if drift:
+        return drift  # returned model version differs from pinned id -> DRIFT stop
     missing = _find(e, MissingCredentials)
     if missing:
         return missing  # ADK wraps plugin errors; surface the real one
@@ -144,14 +147,20 @@ def classify_error(e: BaseException) -> BaseException:
 class AdkAgent:
     name = "adk"
 
-    def __init__(self, *, cache, limiter, timeout_s: float = 120.0) -> None:
+    def __init__(self, *, cache, limiter, timeout_s: float = 120.0, version_log=None,
+                 strict_model_pin: bool = False) -> None:
         self.cache = cache
         self.limiter = limiter
         self.timeout_s = timeout_s
+        self.version_log = version_log
+        self.strict_model_pin = strict_model_pin
 
     async def run_trial(self, config: dict, scenario: dict, world, *, seed: int, cache_key: str) -> AgentRun:
+        req_model = str(config["model"])
+        pinned = req_model.partition("#")[0] if (self.strict_model_pin and not req_model.startswith("fake-")) else None
         plugin = RecorderPlugin(world=world, cache=self.cache, trial_key=cache_key, limiter=self.limiter,
-                                toolset=set(config.get("tools", {})), needs_key=not is_local(config["model"]))
+                                toolset=set(config.get("tools", {})), needs_key=not is_local(req_model),
+                                model_requested=req_model, pinned_model=pinned, version_log=self.version_log)
         app = App(name=APP_NAME, root_agent=build_agent(config), plugins=[plugin])
         runner = Runner(app=app, session_service=InMemorySessionService())
         session = await runner.session_service.create_session(app_name=APP_NAME, user_id="user")

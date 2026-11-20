@@ -156,7 +156,7 @@ def _progress_factory(total_label: str):
 
 
 def cmd_check(a) -> int:
-    from .agents.base import MissingCredentials, QuotaExhausted
+    from .agents.base import MissingCredentials, ModelVersionDrift, QuotaExhausted
     from .pipeline import BudgetExceeded, run_check
     from .scenarios import load_scenarios
 
@@ -177,6 +177,10 @@ def cmd_check(a) -> int:
     except BudgetExceeded as e:
         say(f"[red]{e}[/red]")
         return 4
+    except ModelVersionDrift as e:
+        say(f"[red bold]Stopped — {e}[/red bold]")
+        say("Treating this run as DRIFT; no attribution while the returned model version differs from the pinned id.")
+        return 6
     except QuotaExhausted as e:
         say(f"[yellow]Stopped: {e}[/yellow]")
         say("Finished trials and model calls are cached. Rerun the same command after the quota resets to resume.")

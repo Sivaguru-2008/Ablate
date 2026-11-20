@@ -36,13 +36,15 @@ class CheckOutput:
     pr_markdown: str
 
 
-def make_agent(name: str, cache: DiskCache, *, rpm: int | None = None, timeout_s: float = 120.0):
+def make_agent(name: str, cache: DiskCache, *, rpm: int | None = None, timeout_s: float = 120.0,
+               version_log: Path | None = None, strict_model_pin: bool = False):
     if name == "scripted":
         from .agents.scripted_agent import ScriptedAgent
         return ScriptedAgent()
     if name == "adk":
         from .agents.adk_agent import AdkAgent
-        return AdkAgent(cache=cache, limiter=RateLimiter(rpm), timeout_s=timeout_s)
+        return AdkAgent(cache=cache, limiter=RateLimiter(rpm), timeout_s=timeout_s,
+                        version_log=version_log, strict_model_pin=strict_model_pin)
     raise ValueError(f"unknown agent {name!r} (scripted | adk)")
 
 
@@ -70,7 +72,8 @@ def run_check(base: dict, cand: dict, scenarios_path: Path, run_dir: Path, *, ag
     results: list = []
     if plan.release_status == "OK":
         cache = DiskCache(cache_dir or DEFAULT_CACHE)
-        ag = make_agent(agent, cache, rpm=rpm)
+        ag = make_agent(agent, cache, rpm=rpm, version_log=run_dir / "model_versions.jsonl",
+                        strict_model_pin=(agent == "adk"))
         results = asyncio.run(run_plan(plan, pf.configs, {s["id"]: s for s in scenarios}, ag, cache,
                                        concurrency=concurrency, progress=progress))
         write_jsonl(run_dir / "results.jsonl", results)
