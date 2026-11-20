@@ -52,3 +52,57 @@ Regression reproduced: candidate violates a contract in 57.5% of trials vs 6.7% 
 <sub>Controls: A/A two-sided p = 0.3996 (clean) · model versions: gemini-3.5-flash-lite → gemini-3.5-flash-lite-scripted-001 · INVALID-rate Fisher min p = 1.0000 · affected-scenario floor = 7</sub>
 
 <sub>Plan `889d8f9b7d8c` · n = 24 scenarios · k = 5 · δ = 10 pp · α = 0.05 familywise (Holm) · 9 arms · 1,080 trials · agent `scripted` · oracle: code contracts, no LLM judge</sub>
+
+===============================================================================
+Execution 2 — AGENT=adk + Secret Manager on cached live Gemini run (`runs/live_v2`)
+===============================================================================
+Date (UTC):      2026-11-20T19:38:29Z
+GCP Project:     applied-range-496518-v2 (project number 324699159359)
+Secret Manager:  ablate-gemini-key:latest mounted as GOOGLE_API_KEY (secretmanager.googleapis.com enabled)
+Cached input:    gs://ablate-reports-applied-range-496518-v2/ablate-cache/live_v2 (0 new model calls)
+Build method:    Remote Cloud Build (`gcloud run jobs deploy ablate-gate --source .`, no local image build)
+Region:          asia-south1
+Job name:        ablate-gate
+Execution ID:    ablate-gate-dgpqg
+Console URL:     https://console.cloud.google.com/run/jobs/executions/details/asia-south1/ablate-gate-dgpqg?project=324699159359
+Run ID:          20261120T193827Z-e27914156d7a
+Agent mode:      adk (cached live gemini-3.5-flash-lite run; 0 new model calls)
+
+Commands executed
+-----------------
+gcloud run jobs deploy ablate-gate --source . --region asia-south1 --set-env-vars "ABLATE_BUCKET=gs://ablate-reports-applied-range-496518-v2,ABLATE_AGENT=adk,GOOGLE_GENAI_USE_VERTEXAI=true,ABLATE_CACHED_RUN=gs://ablate-reports-applied-range-496518-v2/ablate-cache/live_v2" --set-secrets "GOOGLE_API_KEY=ablate-gemini-key:latest" --cpu 2 --memory 2Gi --task-timeout 3600 --max-retries 0 --quiet
+gcloud run jobs execute ablate-gate --region asia-south1 --wait --quiet
+gcloud storage ls -l gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/
+
+Cloud Storage object listing
+----------------------------
+      3129  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/plan.json
+      1468  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/pr_comment.md
+       425  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/preflight.json
+      5856  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/report.html
+   3375024  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/results.jsonl
+      2313  2026-11-20T19:38:29Z  gs://ablate-reports-applied-range-496518-v2/ablate-runs/20261120T193827Z-e27914156d7a/verdict.json
+TOTAL: 6 objects, 3388215 bytes (3.23MiB)
+
+Uploaded pr_comment.md
+----------------------
+## ⛔ Ablate release gate: BLOCK
+
+Regression reproduced: candidate violates a contract in 75.8% of trials vs 12.5% on base (paired sign-flip, one-sided p < 0.0001).
+
+**Named change(s):** `block.confirm`
+
+| Change | Verdict | Revert it: cand−X vs base (NI bound < δ?) | Add it alone: base+X vs base (Holm p) | Scenarios worse | Next step |
+|---|---|---|---|---|---|
+| `block.confirm` | **MULTIPLE_CONTRIBUTORS** | no: +2.5 pp, bound +23.5 pp (one-sided α = 0.0167) | yes: +60.8 pp, p = 0.0004 | 17/24 | adding it alone hurts, but reverting it alone does not restore base |
+| `block.role` | INCONCLUSIVE | no: +60.8 pp, bound +80.8 pp (one-sided α = 0.0250) | no: +0.8 pp, p = 1.0000 | 2/24 | 33 more paired scenarios ≈ $9.36 |
+| `gen.temperature` | INCONCLUSIVE | no: +62.5 pp, bound +80.0 pp (one-sided α = 0.0500) | no: +0.0 pp, p = 1.0000 | 2/24 | 1 more paired scenarios ≈ $0.28 |
+
+**Impact:** ≈ ₹60,694,669 per 1,000 conversations in state changes made without their preconditions, under this scenario mix.
+
+**Next step:** Revert the named change(s) and re-run the gate.
+
+<sub>Controls: A/A two-sided p = 0.3213 (clean) · model versions: gemini-3.5-flash-lite → gemini-3.5-flash-lite · INVALID-rate Fisher min p = 1.0000 · affected-scenario floor = 7</sub>
+
+<sub>Plan `e27914156d7a` · n = 24 scenarios · k = 5 · δ = 10 pp · α = 0.05 familywise (Holm) · 9 arms · 1,080 trials · agent `adk` · oracle: code contracts, no LLM judge</sub>
+

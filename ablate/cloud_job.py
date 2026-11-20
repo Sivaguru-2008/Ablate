@@ -81,32 +81,79 @@ def upload(run_dir: Path, dest: str, run_id: str) -> list[str]:
     return urls
 
 
+CACHED_INPUTS = ("plan.json", "results.jsonl", "preflight.json", "scenarios.yaml")
+
+
+def fetch_cached_run(src: str, run_dir: Path) -> None:
+    """Copy a recorded run (plan.json + results.jsonl) from gs://, file://, or local path into run_dir."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    if src.startswith("gs://"):
+        _, bucket_name, prefix = parse_destination(src)
+        from google.cloud import storage
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        for name in CACHED_INPUTS:
+            blob_path = f"{prefix}/{name}" if prefix else name
+            blob = bucket.blob(blob_path)
+            if blob.exists():
+                blob.download_to_filename(str(run_dir / name))
+            elif name in ("plan.json", "results.jsonl"):
+                raise FileNotFoundError(f"missing gs://{bucket_name}/{blob_path}")
+        return
+    if src.startswith("file://"):
+        _, root, _ = parse_destination(src)
+        src_dir = Path(root)
+    else:
+        src_dir = Path(src)
+    for name in CACHED_INPUTS:
+        f = src_dir / name
+        if f.exists():
+            (run_dir / name).write_bytes(f.read_bytes())
+        elif name in ("plan.json", "results.jsonl"):
+            raise FileNotFoundError(f"missing {f}")
+
+
 def main(env: dict | None = None) -> int:
-    from .pipeline import run_check
+    from .pipeline import finish, run_check
+    from .plan import load
+    from .results import read_jsonl
+    from .verdict import verdict
 
     env = dict(os.environ if env is None else env)
     dest = env.get("ABLATE_BUCKET")
     if not dest:
         print("ABLATE_BUCKET is not set", file=sys.stderr)
         return 2
-    agent = env.get("ABLATE_AGENT", "scripted")
-    base = differ.load_config(env.get("ABLATE_BASE", PROJECT_DIR / "configs" / "base.yaml"))
-    cand = differ.load_config(env.get("ABLATE_CAND", PROJECT_DIR / "configs" / "cand.yaml"))
-    if env.get("ABLATE_MODEL"):
-        base["model"] = cand["model"] = env["ABLATE_MODEL"]
-    scenarios = Path(env.get("ABLATE_SCENARIOS", PROJECT_DIR / "scenarios" / "retail.yaml"))
-    k = int(env["ABLATE_K"]) if env.get("ABLATE_K") else None
-    rpm = int(env["ABLATE_RPM"]) if env.get("ABLATE_RPM") else None
-
     work = Path(env.get("ABLATE_WORKDIR") or tempfile.mkdtemp(prefix="ablate-job-"))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = work / "run"
-    out = run_check(base, cand, scenarios, run_dir, agent=agent, k=k, rpm=rpm, concurrency=4,
-                    cache_dir=work / "cache")
+
+    cached_src = env.get("ABLATE_CACHED_RUN")
+    if cached_src:
+        fetch_cached_run(cached_src, run_dir)
+        plan = load(run_dir)
+        results = read_jsonl(run_dir / "results.jsonl")
+        out = finish(run_dir, plan, verdict(plan, results), results)
+        api_calls_made = 0
+    else:
+        agent = env.get("ABLATE_AGENT", "scripted")
+        base = differ.load_config(env.get("ABLATE_BASE", PROJECT_DIR / "configs" / "base.yaml"))
+        cand = differ.load_config(env.get("ABLATE_CAND", PROJECT_DIR / "configs" / "cand.yaml"))
+        if env.get("ABLATE_MODEL"):
+            base["model"] = cand["model"] = env["ABLATE_MODEL"]
+        scenarios = Path(env.get("ABLATE_SCENARIOS", PROJECT_DIR / "scenarios" / "retail.yaml"))
+        k = int(env["ABLATE_K"]) if env.get("ABLATE_K") else None
+        rpm = int(env["ABLATE_RPM"]) if env.get("ABLATE_RPM") else None
+        out = run_check(base, cand, scenarios, run_dir, agent=agent, k=k, rpm=rpm, concurrency=4,
+                        cache_dir=work / "cache")
+        api_calls_made = sum(r.api_calls for r in out.results)
+
     run_id = f"{stamp}-{out.verdict.plan_hash[:12]}"
     urls = upload(run_dir, dest, run_id)
     summary = {"run_id": run_id, "decision": out.verdict.decision, "status": out.verdict.status,
-               "named": out.verdict.named, "trials": len(out.results), "uploaded": urls}
+               "named": out.verdict.named, "trials": len(out.results), "api_calls": api_calls_made,
+               "cached_run": bool(cached_src), "uploaded": urls}
     print(json.dumps(summary, indent=2))  # one structured line block for Cloud Logging
     return 0
 

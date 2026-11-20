@@ -41,3 +41,22 @@ def test_container_files_are_present(root: Path):
     ignore = (root / ".gcloudignore").read_text(encoding="utf-8")
     for p in (".venv/", ".sealed/", ".env", "runs/"):
         assert p in ignore, p
+
+
+def test_job_replays_cached_run_with_zero_api_calls(tmp_path, capsys):
+    src_bucket = tmp_path / "src_bucket"
+    assert cloud_job.main({"ABLATE_BUCKET": src_bucket.resolve().as_uri(), "ABLATE_WORKDIR": str(tmp_path / "w1")}) == 0
+    s1 = json.loads(capsys.readouterr().out)
+    cached_dir = src_bucket / "ablate-runs" / s1["run_id"]
+
+    dst_bucket = tmp_path / "dst_bucket"
+    code = cloud_job.main({
+        "ABLATE_BUCKET": dst_bucket.resolve().as_uri(),
+        "ABLATE_AGENT": "adk",
+        "ABLATE_CACHED_RUN": str(cached_dir),
+        "ABLATE_WORKDIR": str(tmp_path / "w2"),
+    })
+    assert code == 0
+    s2 = json.loads(capsys.readouterr().out)
+    assert s2["cached_run"] is True and s2["api_calls"] == 0
+    assert s2["decision"] == s1["decision"] and s2["named"] == s1["named"]
