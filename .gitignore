@@ -1,0 +1,25 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Ablate run outputs and caches (re-creatable; may hold recorded model traffic)
+runs/
+.ablate_cache/
+
+# Sealed envelope labels and salts must never be committed (rule 5)
+.sealed/
+
+# Secrets
+.env
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
